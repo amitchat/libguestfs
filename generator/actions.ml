@@ -796,6 +796,8 @@ to specify the QEMU interface emulation to use at run time." };
       InitISOFS, Always, TestResultString (
         [["file_architecture"; "/bin-ppc64le-dynamic"]], "ppc64le"), [];
       InitISOFS, Always, TestResultString (
+        [["file_architecture"; "/bin-riscv64-dynamic"]], "riscv64"), [];
+      InitISOFS, Always, TestResultString (
         [["file_architecture"; "/bin-sparc-dynamic"]], "sparc"), [];
       InitISOFS, Always, TestResultString (
         [["file_architecture"; "/bin-win32.exe"]], "i386"), [];
@@ -813,6 +815,8 @@ to specify the QEMU interface emulation to use at run time." };
         [["file_architecture"; "/lib-ppc64.so"]], "ppc64"), [];
       InitISOFS, Always, TestResultString (
         [["file_architecture"; "/lib-ppc64le.so"]], "ppc64le"), [];
+      InitISOFS, Always, TestResultString (
+        [["file_architecture"; "/lib-riscv64.so"]], "riscv64"), [];
       InitISOFS, Always, TestResultString (
         [["file_architecture"; "/lib-sparc.so"]], "sparc"), [];
       InitISOFS, Always, TestResultString (
@@ -839,22 +843,18 @@ Currently defined architectures are:
 
 =over 4
 
+=item \"aarch64\"
+
+64 bit ARM.
+
+=item \"arm\"
+
+32 bit ARM.
+
 =item \"i386\"
 
 This string is returned for all 32 bit i386, i486, i586, i686 binaries
 irrespective of the precise processor requirements of the binary.
-
-=item \"x86_64\"
-
-64 bit x86-64.
-
-=item \"sparc\"
-
-32 bit SPARC.
-
-=item \"sparc64\"
-
-64 bit SPARC V9 and above.
 
 =item \"ia64\"
 
@@ -866,15 +866,31 @@ Intel Itanium.
 
 =item \"ppc64\"
 
-64 bit Power PC.
+64 bit Power PC (big endian).
 
-=item \"arm\"
+=item \"ppc64le\"
 
-32 bit ARM.
+64 bit Power PC (little endian).
 
-=item \"aarch64\"
+=item \"riscv32\"
 
-64 bit ARM.
+=item \"riscv64\"
+
+=item \"riscv128\"
+
+RISC-V 32-, 64- or 128-bit variants.
+
+=item \"sparc\"
+
+32 bit SPARC.
+
+=item \"sparc64\"
+
+64 bit SPARC V9 and above.
+
+=item \"x86_64\"
+
+64 bit x86-64.
 
 =back
 
@@ -3566,9 +3582,8 @@ and directories stored within.
 
 It is not necessary to mount the disk partition to run this command.
 
-All entries in the filesystem are returned, excluding C<.> and
-C<..>. This function can list deleted or unaccessible files.
-The entries are I<not> sorted.
+All entries in the filesystem are returned. This function can list deleted
+or unaccessible files. The entries are I<not> sorted.
 
 The C<tsk_dirent> structure contains the following fields.
 
@@ -3701,6 +3716,18 @@ Whiteout inode (BSD)
 Unknown file type
 
 =back" };
+
+  { defaults with
+    name = "find_inode"; added = (1, 35, 6);
+    style = RStructList ("dirents", "tsk_dirent"), [Mountable "device"; Int64 "inode";], [];
+    optional = Some "libtsk";
+    progress = true; cancellable = true;
+    shortdesc = "search the entries associated to the given inode";
+    longdesc = "\
+Searches all the entries associated with the given inode.
+
+For each entry, a C<tsk_dirent> structure is returned.
+See C<filesystem_walk> for more information about C<tsk_dirent> structures." };
 
 ]
 
@@ -13216,6 +13243,15 @@ handle C<file>.
 
 If C<remove> is true (C<false> by default), then the transformation
 is removed." };
+
+  { defaults with
+    name = "internal_find_inode"; added = (1, 35, 6);
+    style = RErr, [Mountable "device"; Int64 "inode"; FileOut "filename";], [];
+    proc_nr = Some 470;
+    visibility = VInternal;
+    optional = Some "libtsk";
+    shortdesc = "search the entries associated to the given inode";
+    longdesc = "Internal function for find_inode." };
 
 ]
 

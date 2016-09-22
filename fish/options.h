@@ -112,6 +112,9 @@ struct mp {
 /* in config.c */
 extern void parse_config (void);
 
+/* in decrypt.c */
+extern void inspect_do_decrypt (guestfs_h *g);
+
 /* in domain.c */
 extern int add_libvirt_drives (guestfs_h *g, const char *guest);
 
@@ -125,7 +128,6 @@ extern void print_inspect_prompt (void);
 
 #if COMPILING_VIRT_INSPECTOR
 /* (low-level inspection functions, used by virt-inspector only) */
-extern void inspect_do_decrypt (guestfs_h *g);
 extern void inspect_mount_root (guestfs_h *g, const char *root);
 #endif
 
