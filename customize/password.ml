@@ -1,5 +1,5 @@
 (* virt-sysprep
- * Copyright (C) 2012-2016 Red Hat Inc.
+ * Copyright (C) 2012-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,8 +18,6 @@
 
 open Common_gettext.Gettext
 open Common_utils
-
-open Customize_utils
 
 open Printf
 
@@ -69,7 +67,7 @@ and parse_selector_list orig_arg = function
   | [ "disable"|"disabled" ] ->
     { pw_password = Disabled_password; pw_locked = false }
   | _ ->
-    error (f_"invalid password selector '%s'; see the man page") orig_arg
+    error (f_"invalid password selector ‘%s’; see the man page") orig_arg
 
 (* Permissible characters in a salt. *)
 let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./"

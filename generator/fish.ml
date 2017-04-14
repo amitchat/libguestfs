@@ -1,5 +1,5 @@
 (* libguestfs
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 
 open Printf
 
+open Common_utils
 open Types
 open Utils
 open Pr
@@ -30,6 +31,7 @@ open Structs
 open Prepopts
 open C
 open Events
+open Fish_commands
 
 let generate_header = generate_header ~inputs:["generator/fish.ml"]
 
@@ -53,7 +55,7 @@ let doc_opttype_of = function
 
 let get_aliases { fish_alias = fish_alias; non_c_aliases = non_c_aliases } =
   let non_c_aliases =
-    List.map (fun n -> replace_char n '_' '-') non_c_aliases in
+    List.map (fun n -> String.replace_char n '_' '-') non_c_aliases in
   fish_alias @ non_c_aliases
 
 let all_functions_commands_and_aliases_sorted =
@@ -73,7 +75,7 @@ let all_functions_commands_and_aliases_sorted =
 
 let c_quoted_indented ~indent str =
   let str = c_quote str in
-  let str = replace_str str "\\n" ("\\n\"\n" ^ indent ^ "\"") in
+  let str = String.replace str "\\n" ("\\n\"\n" ^ indent ^ "\"") in
   str
 
 (* Generate run_* functions and header for libguestfs API functions. *)
@@ -322,7 +324,7 @@ let generate_fish_run_cmds actions () =
         List.iter (
           fun argt ->
             let n = name_of_optargt argt in
-            let uc_n = String.uppercase n in
+            let uc_n = String.uppercase_ascii n in
             let len = String.length n in
             pr "if (STRPREFIX (argv[i], \"%s:\")) {\n" n;
             (match argt with
@@ -466,7 +468,7 @@ let generate_fish_run_cmds actions () =
       List.iter (
         function
         | OStringList n ->
-          let uc_n = String.uppercase n in
+          let uc_n = String.uppercase_ascii n in
           pr "  if ((optargs_s.bitmask & %s_%s_BITMASK) &&\n"
             c_optarg_prefix uc_n;
           pr "      optargs_s.%s != NULL)\n" n;
@@ -539,9 +541,9 @@ let generate_fish_cmd_entries actions () =
            shortdesc = shortdesc; longdesc = longdesc } as f) ->
       let aliases = get_aliases f in
 
-      let name2 = replace_char name '_' '-' in
+      let name2 = String.replace_char name '_' '-' in
 
-      let longdesc = replace_str longdesc "C<guestfs_" "C<" in
+      let longdesc = String.replace longdesc "C<guestfs_" "C<" in
       let synopsis =
         match args with
         | [] -> name2
@@ -625,7 +627,7 @@ let generate_fish_cmds () =
     fun ({ name = name; shortdesc = shortdesc; longdesc = longdesc } as f) ->
       let aliases = get_aliases f in
 
-      let name2 = replace_char name '_' '-' in
+      let name2 = String.replace_char name '_' '-' in
       let describe_alias =
         if aliases <> [] then
           sprintf "\n\nYou can use %s as an alias for this command."
@@ -656,13 +658,13 @@ let generate_fish_cmds () =
   pr "  list_builtin_commands ();\n";
   List.iter (
     fun (name, f) ->
-      let name = replace_char name '_' '-' in
+      let name = String.replace_char name '_' '-' in
       match f with
       | Function shortdesc ->
         pr "  printf (\"%%-20s %%s\\n\", \"%s\", _(\"%s\"));\n"
           name shortdesc
       | Alias f ->
-        let f = replace_char f '_' '-' in
+        let f = String.replace_char f '_' '-' in
         pr "  printf (\"%%-20s \", \"%s\");\n" name;
         pr "  printf (_(\"alias for '%%s'\"), \"%s\");\n" f;
         pr "  putchar ('\\n');\n"
@@ -670,52 +672,7 @@ let generate_fish_cmds () =
   pr "  printf (\"    %%s\\n\",";
   pr "          _(\"Use -h <cmd> / help <cmd> to show detailed help for a command.\"));\n";
   pr "}\n";
-  pr "\n";
-
-  (* display_command function, which implements guestfish -h cmd *)
-  pr "int\n";
-  pr "display_command (const char *cmd)\n";
-  pr "{\n";
-  pr "  const struct command_table *ct;\n";
-  pr "\n";
-  pr "  ct = lookup_fish_command (cmd, strlen (cmd));\n";
-  pr "  if (ct) {\n";
-  pr "    fputs (ct->entry->help, stdout);\n";
-  pr "    return 0;\n";
-  pr "  }\n";
-  pr "  else\n";
-  pr "    return display_builtin_command (cmd);\n";
-  pr "}\n";
-  pr "\n";
-
-  (* run_action function *)
-  pr "int\n";
-  pr "run_action (const char *cmd, size_t argc, char *argv[])\n";
-  pr "{\n";
-  pr "  const struct command_table *ct;\n";
-  pr "  int ret = -1;\n";
-  pr "\n";
-  pr "  ct = lookup_fish_command (cmd, strlen (cmd));\n";
-  pr "  if (ct) {\n";
-  pr "    ret = ct->entry->run (cmd, argc, argv);\n";
-  pr "    /* run function may return magic value -2 (RUN_WRONG_ARGS) to indicate\n";
-  pr "     * that this function should print the command synopsis.\n";
-  pr "     */\n";
-  pr "    if (ret == RUN_WRONG_ARGS) {\n";
-  pr "      fprintf (stderr, _(\"error: incorrect number of arguments\\n\"));\n";
-  pr "      if (ct->entry->synopsis)\n";
-  pr "        fprintf (stderr, _(\"usage: %%s\\n\"), ct->entry->synopsis);\n";
-  pr "      fprintf (stderr, _(\"type 'help %%s' for more help on %%s\\n\"), cmd, cmd);\n";
-  pr "      ret = -1;\n";
-  pr "    }\n";
-  pr "  }\n";
-  pr "  else {\n";
-  pr "    fprintf (stderr, _(\"%%s: unknown command\\n\"), cmd);\n";
-  pr "    if (command_num == 1)\n";
-  pr "      extended_help_message ();\n";
-  pr "  }\n";
-  pr "  return ret;\n";
-  pr "}\n"
+  pr "\n"
 
 and generate_fish_cmds_h () =
   generate_header CStyle GPLv2plus;
@@ -748,9 +705,13 @@ and generate_fish_cmds_gperf () =
 
 #include <config.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libintl.h>
 
+#include \"fish.h\"
+#include \"run.h\"
 #include \"cmds-gperf.h\"
 
 ";
@@ -771,7 +732,7 @@ struct command_table;
   List.iter (
     fun ({ name = name } as f) ->
       let aliases = get_aliases f in
-      let name2 = replace_char name '_' '-' in
+      let name2 = String.replace_char name '_' '-' in
 
       (* The basic command. *)
       pr "%s, &%s_cmd_entry\n" name name;
@@ -785,7 +746,53 @@ struct command_table;
         fun alias ->
           pr "%s, &%s_cmd_entry\n" alias name;
       ) aliases;
-  ) fish_functions_and_commands_sorted
+  ) fish_functions_and_commands_sorted;
+
+  pr "\
+%%%%
+
+int
+display_command (const char *cmd)
+{
+  const struct command_table *ct;
+
+  ct = lookup_fish_command (cmd, strlen (cmd));
+  if (ct) {
+    fputs (ct->entry->help, stdout);
+    return 0;
+  }
+  else
+    return display_builtin_command (cmd);
+}
+
+int
+run_action (const char *cmd, size_t argc, char *argv[])
+{
+  const struct command_table *ct;
+  int ret = -1;
+
+  ct = lookup_fish_command (cmd, strlen (cmd));
+  if (ct) {
+    ret = ct->entry->run (cmd, argc, argv);
+    /* run function may return magic value -2 (RUN_WRONG_ARGS) to indicate
+     * that this function should print the command synopsis.
+     */
+    if (ret == RUN_WRONG_ARGS) {
+      fprintf (stderr, _(\"error: incorrect number of arguments\\n\"));
+      if (ct->entry->synopsis)
+        fprintf (stderr, _(\"usage: %%s\\n\"), ct->entry->synopsis);
+      fprintf (stderr, _(\"type 'help %%s' for more help on %%s\\n\"), cmd, cmd);
+      ret = -1;
+    }
+  }
+  else {
+    fprintf (stderr, _(\"%%s: unknown command\\n\"), cmd);
+    if (command_num == 1)
+      extended_help_message ();
+  }
+  return ret;
+}
+"
 
 (* Readline completion for guestfish. *)
 and generate_fish_completion () =
@@ -817,7 +824,7 @@ static const char *const commands[] = {
     List.map (
       fun ({ name = name } as f) ->
         let aliases = get_aliases f in
-        let name2 = replace_char name '_' '-' in
+        let name2 = String.replace_char name '_' '-' in
         name2 :: aliases
     ) (fish_functions_and_commands_sorted) in
   let commands = List.flatten commands in
@@ -894,9 +901,9 @@ and generate_fish_actions_pod () =
               try Str.matched_group 1 s
               with Not_found ->
                 failwithf "error substituting C<guestfs_...> in longdesc of function %s" name in
-            "L</" ^ replace_char sub '_' '-' ^ ">"
+            "L</" ^ String.replace_char sub '_' '-' ^ ">"
         ) longdesc in
-      let name = replace_char name '_' '-' in
+      let name = String.replace_char name '_' '-' in
 
       List.iter (
         fun name ->
@@ -961,7 +968,7 @@ and generate_fish_commands_pod () =
   List.iter (
     fun ({ name = name; longdesc = longdesc } as f) ->
       let aliases = get_aliases f in
-      let name = replace_char name '_' '-' in
+      let name = String.replace_char name '_' '-' in
 
       List.iter (
         fun name ->
@@ -1127,7 +1134,8 @@ event_bitmask_of_event_set (const char *arg, uint64_t *eventset_r)
   List.iter (
     fun (name, _) ->
       pr "if (STREQLEN (arg, \"%s\", n))\n" name;
-      pr "      *eventset_r |= GUESTFS_EVENT_%s;\n" (String.uppercase name);
+      pr "      *eventset_r |= GUESTFS_EVENT_%s;\n"
+         (String.uppercase_ascii name);
       pr "    else ";
   ) events;
 
@@ -1155,6 +1163,9 @@ and generate_fish_test_prep_sh () =
   pr "\
 set -e
 
+$TEST_FUNCTIONS
+skip_if_skipped
+
 rm -f %s
 
 $VG guestfish \\
@@ -1166,7 +1177,7 @@ $VG guestfish \\
     fun i (name, _, _, _) ->
       let params = [name] in
       let params =
-        if find name "lv" <> -1 then (
+        if String.find name "lv" <> -1 then (
           incr vg_count;
           sprintf "/dev/VG%d/LV" !vg_count :: params
         ) else params in

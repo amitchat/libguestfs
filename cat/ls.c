@@ -31,7 +31,14 @@
 #include <assert.h>
 #include <time.h>
 #include <libintl.h>
+
+#if MAJOR_IN_MKDEV
+#include <sys/mkdev.h>
+#elif MAJOR_IN_SYSMACROS
 #include <sys/sysmacros.h>
+#else
+#include <sys/types.h>
+#endif
 
 #include "human.h"
 #include "getprogname.h"
@@ -52,6 +59,8 @@ int keys_from_stdin = 0;
 int echo_keys = 0;
 const char *libvirt_uri = NULL;
 int inspector = 1;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 
 static int csv = 0;
 static int human = 0;
@@ -84,7 +93,7 @@ static void __attribute__((noreturn))
 usage (int status)
 {
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n"),
              getprogname ());
   else {
     printf (_("%s: list files in a virtual machine\n"

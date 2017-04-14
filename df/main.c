@@ -55,6 +55,8 @@ int keys_from_stdin = 0;
 int echo_keys = 0;
 const char *libvirt_uri = NULL;
 int inspector = 0;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 
 int csv = 0;                    /* --csv */
 int human = 0;                  /* --human-readable|-h */
@@ -67,7 +69,7 @@ static void __attribute__((noreturn))
 usage (int status)
 {
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n"),
              getprogname ());
   else {
     printf (_("%s: display free space on virtual filesystems\n"
@@ -349,6 +351,10 @@ single_drive_display_name (struct drv *drvs)
     if (name == NULL)
       error (EXIT_FAILURE, errno, "strdup");
     break;
+
+  case drv_N:
+  case drv_scratch:
+    abort (); /* Only used in guestfish or virt-rescue. */
   }
 
   if (!name)

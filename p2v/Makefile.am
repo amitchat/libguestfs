@@ -1,5 +1,5 @@
 # libguestfs virt-p2v
-# Copyright (C) 2009-2016 Red Hat Inc.
+# Copyright (C) 2009-2017 Red Hat Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,13 +17,20 @@
 
 include $(top_srcdir)/subdir-rules.mk
 
+generator_built = \
+	about-authors.c
+
+BUILT_SOURCES = \
+	$(generator_built)
+
 EXTRA_DIST = \
+	$(BUILT_SOURCES) \
 	$(TESTS) $(SLOW_TESTS) \
 	dependencies.m4 \
 	issue \
 	kiwi-config.sh \
 	kiwi-config.xml.in \
-	launch-virt-p2v.in \
+	launch-virt-p2v \
 	p2v.ks.in \
 	p2v.service \
 	test-virt-p2v-docs.sh \
@@ -49,36 +56,51 @@ CLEANFILES += \
 	test-virt-p2v-pxe.vmlinuz \
 	test-virt-p2v-pxe.initramfs \
 	test-virt-p2v-pxe.sshd_config \
-	virt-p2v.img
+	virt-p2v.img \
+	virt-p2v.xz
 
 # Although virt-p2v is a regular binary, it is not usually installed
 # in /usr/bin since it only functions when contained in an ISO or PXE
 # image which is used to boot the physical machine (since otherwise
 # virt-p2v would not be able to get a consistent snapshot of the
-# physical disks).
-libexec_PROGRAMS = virt-p2v
+# physical disks).  Also we don't want the naked binary to appear on
+# the host, which would cause various Gtk dependencies to be pulled
+# in, so it must be compressed.
+virtp2vlibdir = $(libdir)/virt-p2v
+virtp2vlib_DATA = virt-p2v.xz
 
-# Note that miniexpect comes from here:
-# http://git.annexia.org/?p=miniexpect.git;a=summary
+virt-p2v.xz: virt-p2v
+	rm -f $@ $@-t
+	xz --best --keep --stdout $< > $@-t
+	mv $@-t $@
+
+noinst_PROGRAMS = virt-p2v
+
 virt_p2v_SOURCES = \
 	about-authors.c \
-	about-license.c \
 	config.c \
 	conversion.c \
+	cpuid.c \
 	gui.c \
+	gui-gtk2-compat.h \
+	gui-gtk3-compat.h \
+	inhibit.c \
 	kernel.c \
 	kernel-cmdline.c \
 	main.c \
-	miniexpect.c \
-	miniexpect.h \
+	nbd.c \
 	p2v.h \
+	physical-xml.c \
+	rtc.c \
 	ssh.c \
 	utils.c \
 	whole-file.c
 
 virt_p2v_CPPFLAGS = \
 	-DLOCALEBASEDIR=\""$(datadir)/locale"\" \
-	-I$(top_srcdir)/src -I$(top_builddir)/src \
+	-I$(top_srcdir)/common/utils -I$(top_builddir)/common/utils \
+	-I$(top_srcdir)/lib -I$(top_builddir)/lib \
+	-I$(top_srcdir)/common/miniexpect -I$(top_builddir)/common/miniexpect \
 	-I$(srcdir)/../gnulib/lib -I../gnulib/lib
 
 virt_p2v_CFLAGS = \
@@ -86,14 +108,18 @@ virt_p2v_CFLAGS = \
 	$(WARN_CFLAGS) $(WERROR_CFLAGS) \
 	$(PCRE_CFLAGS) \
 	$(LIBXML2_CFLAGS) \
-	$(GTK_CFLAGS)
+	$(GTK_CFLAGS) \
+	$(DBUS_CFLAGS)
 
 virt_p2v_LDADD = \
-	$(top_builddir)/src/libutils.la \
+	$(top_builddir)/common/utils/libutils.la \
+	$(top_builddir)/common/miniexpect/libminiexpect.la \
 	$(PCRE_LIBS) \
 	$(LIBXML2_LIBS) \
 	$(GTK_LIBS) \
-	../gnulib/lib/libgnu.la
+	$(DBUS_LIBS) \
+	../gnulib/lib/libgnu.la \
+	-lm
 
 # Scripts to build the disk image, USB key, or kickstart.
 bin_SCRIPTS = virt-p2v-make-disk virt-p2v-make-kickstart virt-p2v-make-kiwi
@@ -104,7 +130,7 @@ dependencies_files = \
 	dependencies.redhat \
 	dependencies.suse
 
-$(dependencies_files): dependencies.m4
+$(dependencies_files): dependencies.m4 ../config.status
 	define=`echo $@ | $(SED) 's/dependencies.//;y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'`; \
 	m4 -D$$define=1 -DGTK_VERSION=$(GTK_VERSION) $< > $@-t
 	mv $@-t $@
@@ -120,13 +146,6 @@ virtp2vdata_DATA = \
 	launch-virt-p2v \
 	p2v.ks.in \
 	p2v.service
-
-# Deal with stupid autotools libexecdir-not-expandable crap.
-launch-virt-p2v: launch-virt-p2v.in
-	rm -f $@ $@-t
-	$(SED) 's,@''libexecdir@,$(libexecdir),g' < $< > $@-t
-	chmod 0555 $@-t
-	mv $@-t $@
 
 # Manual pages and HTML files for the website.
 man_MANS = \
@@ -209,6 +228,7 @@ run-virt-p2v-in-a-vm: virt-p2v.img $(PHYSICAL_MACHINE)
 	  -device rtl8139,netdev=net1 \
 	  -netdev user,id=net2 \
 	  -device e1000,netdev=net2 \
+	  $(QEMU_OPTIONS) \
 	  &
 
 run-virt-p2v-non-gui-conversion: stamp-test-virt-p2v-pxe-data-files
@@ -237,8 +257,12 @@ TESTS = \
 if ENABLE_APPLIANCE
 TESTS += \
 	test-virt-p2v.sh \
+	test-virt-p2v-nbdkit.sh \
 	$(SLOW_TESTS)
 endif ENABLE_APPLIANCE
+
+check-valgrind:
+	make VG="@VG@" check
 
 SLOW_TESTS = \
 	test-virt-p2v-pxe.sh
@@ -292,7 +316,7 @@ test-virt-p2v-pxe.sshd_config: test-virt-p2v-pxe.sshd_config.in
 
 test-virt-p2v-pxe.authorized_keys: test-virt-p2v-pxe.id_rsa.pub $(top_builddir)/run
 	rm -f $@ $@-t
-	$(top_builddir)/run sh -c 'echo -n environment=\"PATH=$$PATH\",environment=\"LD_LIBRARY_PATH=$(abs_top_builddir)/src/.libs\"\ ' > $@-t
+	$(top_builddir)/run sh -c 'echo -n environment=\"PATH=$$PATH\",environment=\"LD_LIBRARY_PATH=$(abs_top_builddir)/lib/.libs\",environment=\"LIBGUESTFS_PATH=$(abs_top_builddir)/appliance\",environment=\"LIBGUESTFS_CACHEDIR=$(abs_top_builddir)/tmp\"\ ' > $@-t
 	cat $< >> $@-t
 	mv $@-t $@
 

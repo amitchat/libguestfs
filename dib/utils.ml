@@ -21,8 +21,6 @@ open Common_utils
 
 open Printf
 
-let quote = Filename.quote
-
 let unit_GB howmany =
   (Int64.of_int howmany) *^ 1024_L *^ 1024_L *^ 1024_L
 
@@ -35,6 +33,7 @@ let current_arch () =
   | arch -> arch
 
 let output_filename image_name = function
+  | "squashfs" -> image_name ^ ".squash"
   | fmt -> image_name ^ "." ^ fmt
 
 let log_filename () =
@@ -48,11 +47,11 @@ let var_from_lines var lines =
   let var_lines = List.filter (fun x -> String.is_prefix x var_with_equal) lines in
   match var_lines with
   | [] ->
-    error (f_"variable '%s' not found in lines:\n%s")
+    error (f_"variable ‘%s’ not found in lines:\n%s")
       var (String.concat "\n" lines)
   | [x] -> snd (String.split "=" x)
   | _ ->
-    error (f_"variable '%s' has more than one occurrency in lines:\n%s")
+    error (f_"variable ‘%s’ has more than one occurrency in lines:\n%s")
       var (String.concat "\n" lines)
 
 let string_index_fn fn str =
@@ -74,7 +73,7 @@ let digit_prefix_compare a b =
   let split_prefix str =
     let len = String.length str in
     let digits =
-      try string_index_fn (fun x -> not (isdigit x)) str
+      try string_index_fn (fun x -> not (Char.isdigit x)) str
       with Not_found -> len in
     match digits with
     | 0 -> "", str
@@ -91,10 +90,13 @@ let digit_prefix_compare a b =
 let do_mkdir dir =
   mkdir_p dir 0o755
 
-let require_tool tool =
-  try ignore (which tool)
+let get_required_tool tool =
+  try which tool
   with Executable_not_found tool ->
     error (f_"%s needed but not found") tool
+
+let require_tool tool =
+  ignore (get_required_tool tool)
 
 let do_cp src destdir =
   let cmd = [ "cp"; "-t"; destdir; "-a"; src ] in

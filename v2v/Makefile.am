@@ -1,5 +1,5 @@
 # libguestfs virt-v2v tool
-# Copyright (C) 2009-2016 Red Hat Inc.
+# Copyright (C) 2009-2017 Red Hat Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,8 +29,9 @@ SOURCES_MLI = \
 	cmdline.mli \
 	convert_linux.mli \
 	convert_windows.mli \
+	create_libvirt_xml.mli \
+	create_ovf.mli \
 	DOM.mli \
-	domainxml.mli \
 	input_disk.mli \
 	input_libvirt.mli \
 	input_libvirt_other.mli \
@@ -38,7 +39,9 @@ SOURCES_MLI = \
 	input_libvirt_xen_ssh.mli \
 	input_libvirtxml.mli \
 	input_ova.mli \
+	input_vmx.mli \
 	inspect_source.mli \
+	libvirt_utils.mli \
 	linux.mli \
 	linux_bootloaders.mli \
 	linux_kernels.mli \
@@ -49,42 +52,47 @@ SOURCES_MLI = \
 	output_local.mli \
 	output_null.mli \
 	output_qemu.mli \
-	output_rhev.mli \
+	output_rhv.mli \
 	output_vdsm.mli \
-	OVF.mli \
+	parse_ovf_from_ova.mli \
+	parse_libvirt_xml.mli \
+	parse_vmx.mli \
+	qemu_command.mli \
 	target_bus_assignment.mli \
 	types.mli \
 	uefi.mli \
 	utils.mli \
 	vCenter.mli \
 	windows.mli \
-	windows_virtio.mli \
-	xml.mli \
-	xpath_helpers.mli
+	windows_virtio.mli
 
 SOURCES_ML = \
 	types.ml \
-	xml.ml \
-	xpath_helpers.ml \
 	uefi.ml \
 	utils.ml \
 	name_from_disk.ml \
 	vCenter.ml \
-	domainxml.ml \
+	libvirt_utils.ml \
 	DOM.ml \
 	changeuid.ml \
-	OVF.ml \
+	parse_ovf_from_ova.ml \
+	create_ovf.ml \
 	linux.ml \
 	windows.ml \
 	windows_virtio.ml \
 	modules_list.ml \
 	input_disk.ml \
+	parse_vmx.ml \
+	parse_libvirt_xml.ml \
+	create_libvirt_xml.ml \
+	qemu_command.ml \
 	input_libvirtxml.ml \
 	input_libvirt_other.ml \
 	input_libvirt_vcenter_https.ml \
 	input_libvirt_xen_ssh.ml \
 	input_libvirt.ml \
 	input_ova.ml \
+	input_vmx.ml \
 	linux_bootloaders.ml \
 	linux_kernels.ml \
 	convert_linux.ml \
@@ -94,7 +102,7 @@ SOURCES_ML = \
 	output_libvirt.ml \
 	output_local.ml \
 	output_qemu.ml \
-	output_rhev.ml \
+	output_rhv.ml \
 	output_vdsm.ml \
 	inspect_source.ml \
 	target_bus_assignment.ml \
@@ -102,9 +110,8 @@ SOURCES_ML = \
 	v2v.ml
 
 SOURCES_C = \
-	domainxml-c.c \
-	utils-c.c \
-	xml-c.c
+	libvirt_utils-c.c \
+	utils-c.c
 
 if HAVE_OCAML
 
@@ -115,25 +122,25 @@ virt_v2v_CPPFLAGS = \
 	-I. \
 	-I$(top_builddir) \
 	-I$(shell $(OCAMLC) -where) \
-	-I$(top_srcdir)/src
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/lib
 virt_v2v_CFLAGS = \
 	$(WARN_CFLAGS) $(WERROR_CFLAGS) \
-	$(LIBXML2_CFLAGS) \
 	$(LIBVIRT_CFLAGS)
 
 BOBJECTS = \
-	$(top_builddir)/customize/customize_utils.cmo \
 	$(top_builddir)/customize/firstboot.cmo \
 	$(top_builddir)/customize/SELinux_relabel.cmo \
 	$(SOURCES_ML:.ml=.cmo)
 XOBJECTS = $(BOBJECTS:.cmo=.cmx)
 
-# -I $(top_builddir)/src/.libs is a hack which forces corresponding -L
+# -I $(top_builddir)/lib/.libs is a hack which forces corresponding -L
 # option to be passed to gcc, so we don't try linking against an
 # installed copy of libguestfs.
 OCAMLPACKAGES = \
 	-package str,unix \
-	-I $(top_builddir)/src/.libs \
+	-I $(top_builddir)/common/utils/.libs \
+	-I $(top_builddir)/lib/.libs \
 	-I $(top_builddir)/gnulib/lib/.libs \
 	-I $(top_builddir)/ocaml \
 	-I $(top_builddir)/mllib \
@@ -166,26 +173,23 @@ virt_v2v_LINK = \
 	  $(OBJECTS) -o $@
 
 virt_v2v_copy_to_local_SOURCES = \
-	domainxml-c.c \
-	utils-c.c \
-	xml-c.c
+	libvirt_utils-c.c \
+	utils-c.c
 virt_v2v_copy_to_local_CPPFLAGS = \
 	-I. \
 	-I$(top_builddir) \
 	-I$(shell $(OCAMLC) -where) \
-	-I$(top_srcdir)/src
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/lib
 virt_v2v_copy_to_local_CFLAGS = \
 	$(WARN_CFLAGS) $(WERROR_CFLAGS) \
-	$(LIBXML2_CFLAGS) \
 	$(LIBVIRT_CFLAGS)
 
 COPY_TO_LOCAL_BOBJECTS = \
-	xml.cmo \
-	xpath_helpers.cmo \
 	uefi.cmo \
 	utils.cmo \
+	libvirt_utils.cmo \
 	vCenter.cmo \
-	domainxml.cmo \
 	copy_to_local.cmo
 COPY_TO_LOCAL_XOBJECTS = $(COPY_TO_LOCAL_BOBJECTS:.cmo=.cmx)
 
@@ -258,12 +262,23 @@ TESTS_ENVIRONMENT = $(top_builddir)/run --test
 
 TESTS = \
 	test-v2v-docs.sh \
+	test-v2v-i-ova-bad-sha1.sh \
+	test-v2v-i-ova-bad-sha256.sh \
 	test-v2v-i-ova-formats.sh \
+	test-v2v-i-ova-good-checksums.sh \
 	test-v2v-i-ova-gz.sh \
+	test-v2v-i-ova-invalid-manifest1.sh \
+	test-v2v-i-ova-invalid-manifest2.sh \
 	test-v2v-i-ova-subfolders.sh \
+	test-v2v-i-ova-tar.sh \
 	test-v2v-i-ova-two-disks.sh \
-	test-v2v-copy-to-local.sh \
+	test-v2v-i-vmx.sh \
 	test-v2v-bad-networks-and-bridges.sh
+
+if HAVE_LIBVIRT
+TESTS += \
+	test-v2v-copy-to-local.sh
+endif
 
 if HAVE_OCAML_PKG_OUNIT
 TESTS += v2v_unit_tests
@@ -271,32 +286,51 @@ endif
 
 if ENABLE_APPLIANCE
 TESTS += \
-	test-v2v-cdrom.sh \
-	test-v2v-floppy.sh \
 	test-v2v-i-ova.sh \
 	test-v2v-i-disk.sh \
-	test-v2v-in-place.sh \
 	test-v2v-machine-readable.sh \
+	test-v2v-virtio-win-iso.sh \
+	test-v2v-windows-conversion.sh
+
+if HAVE_LIBVIRT
+TESTS += \
+	test-v2v-cdrom.sh \
+	test-v2v-floppy.sh \
+	test-v2v-in-place.sh \
 	test-v2v-networks-and-bridges.sh \
 	test-v2v-no-copy.sh \
 	test-v2v-o-glance.sh \
 	test-v2v-o-libvirt.sh \
 	test-v2v-o-null.sh \
 	test-v2v-o-qemu.sh \
-	test-v2v-o-rhev.sh \
+	test-v2v-o-rhv.sh \
 	test-v2v-o-vdsm-options.sh \
 	test-v2v-oa-option.sh \
 	test-v2v-of-option.sh \
 	test-v2v-on-option.sh \
 	test-v2v-print-source.sh \
 	test-v2v-sound.sh \
-	test-v2v-virtio-win-iso.sh \
-	test-v2v-windows-conversion.sh \
-	$(SLOW_TESTS)
+	$(SLOW_TESTS) \
+	$(ROOT_TESTS)
+endif
 endif ENABLE_APPLIANCE
 
+# The VMDK file is used for some -i ova tests.
+check_DATA = windows.vmdk
+windows.vmdk: ../test-data/phony-guests/windows.img
+	rm -f $@ $@-t
+	if [ -s $< ]; then \
+	    qemu-img convert -f raw $< -O vmdk $@-t; \
+	    mv $@-t $@; \
+	else \
+	    touch $@; \
+	fi
+
+DISTCLEANFILES += \
+	windows.vmdk
+
 check-valgrind:
-	$(MAKE) VG="$(abs_top_builddir)/run @VG@" check
+	$(MAKE) VG="@VG@" check
 
 SLOW_TESTS = \
 	$(real_guests_scripts) \
@@ -304,6 +338,12 @@ SLOW_TESTS = \
 
 check-slow:
 	$(MAKE) check TESTS="$(SLOW_TESTS)" SLOW=1
+
+ROOT_TESTS = \
+	test-v2v-i-ova-as-root.sh
+
+check-root:
+	$(MAKE) check TESTS="$(ROOT_TESTS)"
 
 # A selection of real guests that test-v2v-conversion-of.sh will
 # try to convert.  This is only used by 'make check-slow'.
@@ -328,7 +368,7 @@ real_guests_scripts = \
 test-v2v-conversion-of-%.sh:
 	rm -f $@ $@-t
 	f=`echo "$@" | $(SED) 's/test-v2v-conversion-of-\(.*\).sh/\1/'`; \
-	echo 'exec $$srcdir/test-v2v-conversion-of.sh' "$$f" > $@-t
+	echo 'script=$@ exec $$srcdir/test-v2v-conversion-of.sh' "$$f" > $@-t
 	chmod 0755 $@-t
 	mv $@-t $@
 
@@ -348,21 +388,44 @@ EXTRA_DIST += \
 	test-v2v-floppy.sh \
 	test-v2v-floppy.xml \
 	test-v2v-i-disk.sh \
+	test-v2v-i-ova-as-root.ovf \
+	test-v2v-i-ova-as-root.sh \
+	test-v2v-i-ova-bad-sha1.sh \
+	test-v2v-i-ova-bad-sha256.sh \
+	test-v2v-i-ova-checksums.ovf \
 	test-v2v-i-ova-formats.expected \
 	test-v2v-i-ova-formats.ovf \
 	test-v2v-i-ova-formats.sh \
+	test-v2v-i-ova-good-checksums.sh \
 	test-v2v-i-ova-gz.expected \
 	test-v2v-i-ova-gz.ovf \
 	test-v2v-i-ova-gz.sh \
+	test-v2v-i-ova-invalid-manifest1.sh \
+	test-v2v-i-ova-invalid-manifest2.sh \
 	test-v2v-i-ova-subfolders.expected \
+	test-v2v-i-ova-subfolders.expected2 \
 	test-v2v-i-ova-subfolders.ovf \
 	test-v2v-i-ova-subfolders.sh \
+	test-v2v-i-ova-tar.expected \
+	test-v2v-i-ova-tar.expected2 \
+	test-v2v-i-ova-tar.ovf \
+	test-v2v-i-ova-tar.sh \
 	test-v2v-i-ova-two-disks.expected \
+	test-v2v-i-ova-two-disks.expected2 \
 	test-v2v-i-ova-two-disks.ovf \
 	test-v2v-i-ova-two-disks.sh \
 	test-v2v-i-ova.ovf \
 	test-v2v-i-ova.sh \
 	test-v2v-i-ova.xml \
+	test-v2v-i-vmx.sh \
+	test-v2v-i-vmx-1.expected \
+	test-v2v-i-vmx-2.expected \
+	test-v2v-i-vmx-3.expected \
+	test-v2v-i-vmx-4.expected \
+	test-v2v-i-vmx-1.vmx \
+	test-v2v-i-vmx-2.vmx \
+	test-v2v-i-vmx-3.vmx \
+	test-v2v-i-vmx-4.vmx \
 	test-v2v-in-place.sh \
 	test-v2v-machine-readable.sh \
 	test-v2v-networks-and-bridges-expected.xml \
@@ -373,12 +436,14 @@ EXTRA_DIST += \
 	test-v2v-o-libvirt.sh \
 	test-v2v-o-null.sh \
 	test-v2v-o-qemu.sh \
-	test-v2v-o-rhev.sh \
+	test-v2v-o-rhv.sh \
 	test-v2v-o-vdsm-options.sh \
 	test-v2v-oa-option.sh \
 	test-v2v-of-option.sh \
 	test-v2v-on-option.sh \
+	test-v2v-print-source.expected \
 	test-v2v-print-source.sh \
+	test-v2v-print-source.xml \
 	test-v2v-conversion-of.sh \
 	test-v2v-sound.sh \
 	test-v2v-sound.xml \
@@ -394,14 +459,14 @@ endif
 
 v2v_unit_tests_BOBJECTS = \
 	types.cmo \
-	xml.cmo \
 	uefi.cmo \
 	utils.cmo \
 	DOM.cmo \
-	OVF.cmo \
+	create_ovf.cmo \
 	windows.cmo \
 	windows_virtio.cmo \
 	linux.cmo \
+	parse_vmx.cmo \
 	v2v_unit_tests.cmo
 v2v_unit_tests_XOBJECTS = $(v2v_unit_tests_BOBJECTS:.cmo=.cmx)
 

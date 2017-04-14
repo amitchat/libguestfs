@@ -1,5 +1,5 @@
 # libguestfs
-# Copyright (C) 2009-2016 Red Hat Inc.
+# Copyright (C) 2009-2017 Red Hat Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@ AC_CHECK_HEADERS([\
     errno.h \
     linux/fs.h \
     linux/raid/md_u.h \
+    linux/rtc.h \
     printf.h \
     sys/inotify.h \
     sys/resource.h \
@@ -81,6 +82,9 @@ AC_CHECK_FUNCS([\
     sigaction \
     statvfs \
     sync])
+
+dnl Which header file defines major, minor, makedev.
+AC_HEADER_MAJOR
 
 dnl Check for UNIX_PATH_MAX, creating a custom one if not available.
 AC_MSG_CHECKING([for UNIX_PATH_MAX])
@@ -168,22 +172,27 @@ AC_CHECK_HEADERS([dlfcn.h],[have_dlfcn=yes],[have_dlfcn=no])
 AM_CONDITIONAL([HAVE_LIBDL],
                [test "x$have_libdl" = "xyes" && test "x$have_dlfcn" = "xyes"])
 
-dnl Check for rpcgen and XDR library.  rpcgen is optional.
+dnl Check for an XDR library (required) and rpcgen binary (optional).
+PKG_CHECK_MODULES([RPC], [libtirpc], [], [
+    # If we don't have libtirpc, then we must have <rpc/xdr.h> and
+    # some library to link to in libdir.
+    RPC_CFLAGS=""
+    AC_CHECK_HEADER([rpc/xdr.h],[],[
+        AC_MSG_ERROR([XDR header files are required])
+    ])
+
+    old_LIBS="$LIBS"
+    LIBS=""
+    AC_SEARCH_LIBS([xdrmem_create],[portablexdr rpc xdr nsl])
+    RPC_LIBS="$LIBS"
+    LIBS="$old_LIBS"
+
+    AC_SUBST([RPC_CFLAGS])
+    AC_SUBST([RPC_LIBS])
+])
+
 AC_CHECK_PROG([RPCGEN],[rpcgen],[rpcgen],[no])
 AM_CONDITIONAL([HAVE_RPCGEN],[test "x$RPCGEN" != "xno"])
-AC_CHECK_LIB([portablexdr],[xdrmem_create],[],[
-    AC_SEARCH_LIBS([xdrmem_create],[rpc xdr nsl])
-])
-AC_SEARCH_LIBS([xdr_u_int64_t],[portablexdr rpc xdr nsl],[
-    AC_DEFINE([HAVE_XDR_U_INT64_T],[1],[Define to 1 if xdr_u_int64_t() exists.])
-])
-AC_SEARCH_LIBS([xdr_uint64_t],[portablexdr rpc xdr nsl],[
-    AC_DEFINE([HAVE_XDR_UINT64_T],[1],[Define to 1 if xdr_uint64_t() exists.])
-])
-AM_CONDITIONAL([HAVE_XDR_U_INT64_T],
-               [test "x$ac_cv_search_xdr_u_int64_t" != "xno"])
-AM_CONDITIONAL([HAVE_XDR_UINT64_T],
-               [test "x$ac_cv_search_xdr_uint64_t" != "xno"])
 
 dnl Check for libselinux (optional).
 AC_CHECK_HEADERS([selinux/selinux.h])
@@ -230,13 +239,14 @@ PKG_CHECK_MODULES([PCRE], [libpcre])
 dnl Check for Augeas >= 1.0.0 (required).
 PKG_CHECK_MODULES([AUGEAS],[augeas >= 1.0.0])
 
-dnl libmagic (highly recommended)
+dnl libmagic (required)
 AC_CHECK_LIB([magic],[magic_file],[
     AC_CHECK_HEADER([magic.h],[
         AC_SUBST([MAGIC_LIBS], ["-lmagic"])
-        AC_DEFINE([HAVE_LIBMAGIC],[1],[libmagic found at compile time.])
     ], [])
-],[AC_MSG_WARN([libmagic not found, some core features will be disabled])])
+],[])
+AS_IF([test -z "$MAGIC_LIBS"],
+    [AC_MSG_ERROR([libmagic (part of the "file" command) is required])])
 
 dnl libvirt (highly recommended)
 AC_ARG_WITH([libvirt],[
@@ -282,5 +292,5 @@ AC_DEFINE_UNQUOTED([PATH_SEPARATOR],["$PATH_SEPARATOR"],
                    [Character that separates path elements in search paths])
 
 dnl Library versioning.
-MAX_PROC_NR=`cat $srcdir/src/MAX_PROC_NR`
+MAX_PROC_NR=`cat $srcdir/lib/MAX_PROC_NR`
 AC_SUBST(MAX_PROC_NR)

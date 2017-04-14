@@ -47,6 +47,8 @@ int keys_from_stdin = 0;
 int echo_keys = 0;
 int inspector = 0;
 const char *libvirt_uri = NULL;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 
 static const char *filesystem = NULL;
 static const char *vg = NULL, *lv = NULL;
@@ -66,7 +68,7 @@ usage (int status)
     _("IMPORTANT NOTE: This program ERASES ALL DATA on disks.");
 
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n%s\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n%s\n"),
              getprogname (), warning);
   else {
     printf (_("%s: erase and make a blank disk\n"
@@ -223,7 +225,7 @@ main (int argc, char *argv[])
 
   /* Must be no extra arguments on the command line. */
   if (optind != argc) {
-    fprintf (stderr, _("%s: error: extra argument '%s' on command line.\n"
+    fprintf (stderr, _("%s: error: extra argument ‘%s’ on command line.\n"
              "Make sure to specify the argument for --format, --lvm "
              "or --partition like '--format=%s'.\n"),
              getprogname (), argv[optind], argv[optind]);

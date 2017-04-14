@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,14 +20,15 @@ open Unix
 open Printf
 
 open Common_gettext.Gettext
-
-module G = Guestfs
-
 open Common_utils
+open Unix_utils
+
 open Types
 open Utils
 
 open Cmdline
+
+module G = Guestfs
 
 type conversion_mode =
     | Copying of overlay list * target list
@@ -41,8 +42,8 @@ let rec main () =
 
   (* Print the version, easier than asking users to tell us. *)
   debug "%s: %s %s (%s)"
-        prog Guestfs_config.package_name
-        Guestfs_config.package_version Guestfs_config.host_cpu;
+        prog Guestfs_config.package_name Guestfs_config.package_version_full
+        Guestfs_config.host_cpu;
 
   (* Print the libvirt version if debugging.  Note that if
    * we're configured --without-libvirt, then this will throw
@@ -51,7 +52,7 @@ let rec main () =
    *)
   if verbose () then (
     try
-      let major, minor, release = Domainxml.libvirt_get_version () in
+      let major, minor, release = Libvirt_utils.libvirt_get_version () in
       debug "libvirt version: %d.%d.%d" major minor release
     with _ -> ()
   );
@@ -75,7 +76,8 @@ let rec main () =
   );
 
   let g = open_guestfs ~identifier:"v2v" () in
-  g#set_memsize (g#get_memsize () * 8 / 5);
+  g#set_memsize (g#get_memsize () * 20 / 5);
+  (* The network is only used by the unconfigure_vmware () function. *)
   g#set_network true;
   (match conversion_mode with
    | Copying (overlays, _) -> populate_overlays g overlays
@@ -101,7 +103,6 @@ let rec main () =
 
   (* Conversion. *)
   let guestcaps =
-    let keep_serial_console = output#keep_serial_console in
     let rcaps =
       match conversion_mode with
       | Copying _ ->
@@ -109,7 +110,7 @@ let rec main () =
       | In_place ->
          rcaps_from_source source in
 
-    do_convert g inspect source keep_serial_console rcaps in
+    do_convert g inspect source output rcaps in
 
   g#umount_all ();
 
@@ -174,13 +175,40 @@ and open_source cmdline input =
 
   (match source.s_hypervisor with
   | OtherHV hv ->
-    warning (f_"unknown source hypervisor ('%s') in metadata") hv
+    warning (f_"unknown source hypervisor (‘%s’) in metadata") hv
   | _ -> ()
   );
 
   assert (source.s_name <> "");
   assert (source.s_memory > 0L);
+
   assert (source.s_vcpu >= 1);
+  assert (source.s_cpu_vendor <> Some "");
+  assert (source.s_cpu_model <> Some "");
+  (match source.s_cpu_sockets with
+   | None -> ()
+   | Some i when i > 0 -> ()
+   | _ -> assert false);
+  (match source.s_cpu_cores with
+   | None -> ()
+   | Some i when i > 0 -> ()
+   | _ -> assert false);
+  (match source.s_cpu_threads with
+   | None -> ()
+   | Some i when i > 0 -> ()
+   | _ -> assert false);
+  (match source.s_cpu_sockets, source.s_cpu_cores, source.s_cpu_threads with
+   | None, None, None -> () (* no topology specified *)
+   | sockets, cores, threads ->
+      let sockets = match sockets with None -> 1 | Some v -> v in
+      let cores = match cores with None -> 1 | Some v -> v in
+      let threads = match threads with None -> 1 | Some v -> v in
+      let expected_vcpu = sockets * cores * threads in
+      if expected_vcpu <> source.s_vcpu then
+        warning (f_"source sockets * cores * threads <> number of vCPUs.\nSockets %d * cores per socket %d * threads %d = %d, but number of vCPUs = %d.\n\nThis is a problem with either the source metadata or the virt-v2v input module.  In some circumstances this could stop the guest from booting on the target.")
+                sockets cores threads expected_vcpu source.s_vcpu
+  );
+
   if source.s_disks = [] then
     error (f_"source has no hard disks!");
   List.iter (
@@ -295,7 +323,7 @@ and init_targets cmdline output source overlays =
           | Some format, _ -> format    (* -of overrides everything *)
           | None, Some format -> format (* same as backing format *)
           | None, None ->
-            error (f_"disk %s (%s) has no defined format.\n\nThe input metadata did not define the disk format (eg. raw/qcow2/etc) of this disk, and so virt-v2v will try to autodetect the format when reading it.\n\nHowever because the input format was not defined, we do not know what output format you want to use.  You have two choices: either define the original format in the source metadata, or use the '-of' option to force the output format.") ov.ov_sd ov.ov_source.s_qemu_uri in
+            error (f_"disk %s (%s) has no defined format.\n\nThe input metadata did not define the disk format (eg. raw/qcow2/etc) of this disk, and so virt-v2v will try to autodetect the format when reading it.\n\nHowever because the input format was not defined, we do not know what output format you want to use.  You have two choices: either define the original format in the source metadata, or use the ‘-of’ option to force the output format.") ov.ov_sd ov.ov_source.s_qemu_uri in
 
         (* What really happens here is that the call to #disk_create
          * below fails if the format is not raw or qcow2.  We would
@@ -305,7 +333,7 @@ and init_targets cmdline output source overlays =
          * early, not below, later.
          *)
         if format <> "raw" && format <> "qcow2" then
-          error (f_"output format should be 'raw' or 'qcow2'.\n\nUse the '-of <format>' option to select a different output format for the converted guest.\n\nOther output formats are not supported at the moment, although might be considered in future.");
+          error (f_"output format should be ‘raw’ or ‘qcow2’.\n\nUse the ‘-of <format>’ option to select a different output format for the converted guest.\n\nOther output formats are not supported at the moment, although might be considered in future.");
 
         (* Only allow compressed with qcow2. *)
         if cmdline.compressed && format <> "qcow2" then
@@ -388,7 +416,7 @@ and check_guest_free_space mpstats =
             10_000_000L in
 
         if free_bytes < needed_bytes then
-          error (f_"not enough free space for conversion on filesystem '%s'.  %Ld bytes free < %Ld bytes needed")
+          error (f_"not enough free space for conversion on filesystem ‘%s’.  %Ld bytes free < %Ld bytes needed")
             mp free_bytes needed_bytes
       )
   ) mpstats
@@ -547,7 +575,7 @@ and check_target_free_space mpstats source targets output =
   output#check_target_free_space source targets
 
 (* Conversion. *)
-and do_convert g inspect source keep_serial_console rcaps =
+and do_convert g inspect source output rcaps =
   (match inspect.i_product_name with
   | "unknown" ->
     message (f_"Converting the guest to run on KVM")
@@ -562,7 +590,8 @@ and do_convert g inspect source keep_serial_console rcaps =
         inspect.i_type inspect.i_distro in
   debug "picked conversion module %s" conversion_name;
   debug "requested caps: %s" (string_of_requested_guestcaps rcaps);
-  let guestcaps = convert ~keep_serial_console g inspect source rcaps in
+  let guestcaps =
+    convert g inspect source (output :> Types.output_settings) rcaps in
   debug "%s" (string_of_guestcaps guestcaps);
 
   (* Did we manage to install virtio drivers? *)
@@ -747,7 +776,7 @@ and rcaps_from_source source =
     | Some Source_virtio_blk -> Some Virtio_blk
     | Some Source_virtio_SCSI -> Some Virtio_SCSI
     | Some Source_IDE -> Some IDE
-    | Some t -> error (f_"source has unsupported hard disk type '%s'")
+    | Some t -> error (f_"source has unsupported hard disk type ‘%s’")
                       (string_of_controller t)
     | None -> error (f_"source has unrecognized hard disk type") in
 
@@ -763,7 +792,7 @@ and rcaps_from_source source =
     | Some Source_virtio_net -> Some Virtio_net
     | Some Source_e1000 -> Some E1000
     | Some Source_rtl8139 -> Some RTL8139
-    | Some t -> error (f_"source has unsupported network adapter model '%s'")
+    | Some t -> error (f_"source has unsupported network adapter model ‘%s’")
                       (string_of_nic_model t)
     | None -> None in
 
@@ -771,7 +800,7 @@ and rcaps_from_source source =
     match source.s_video with
     | Some Source_QXL -> Some QXL
     | Some Source_Cirrus -> Some Cirrus
-    | Some t -> error (f_"source has unsupported video adapter model '%s'")
+    | Some t -> error (f_"source has unsupported video adapter model ‘%s’")
                       (string_of_source_video t)
     | None -> None in
 

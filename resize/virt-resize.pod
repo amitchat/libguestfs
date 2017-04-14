@@ -28,7 +28,7 @@ those manual pages first.
 
 =item 1.
 
-Copy C<olddisk> to C<newdisk>, extending one of the guest's partitions
+Copy C<olddisk> to C<newdisk>, extending one of the guest’s partitions
 to fill the extra 5GB of space.
 
  virt-filesystems --long -h --all -a olddisk
@@ -77,7 +77,7 @@ of a raw disk:
 =item 2. Locate input disk image
 
 Locate the input disk image (ie. the file or device on the host
-containing the guest's disk).  If the guest is managed by libvirt, you
+containing the guest’s disk).  If the guest is managed by libvirt, you
 can use C<virsh dumpxml> like this to find the disk image name:
 
  # virsh dumpxml guestname | xpath /domain/devices/disk/source
@@ -121,9 +121,9 @@ Or use L<virsh(1)> vol-create-as to create a libvirt storage volume:
 
 =item 5. Resize
 
-virt-resize takes two mandatory parameters, the input disk
-(eg. device, file, or a URI to a remote disk) and the output disk.
-The output disk is the one created in the previous step.
+virt-resize takes two mandatory parameters, the input disk and the
+output disk (both can be e.g. a device, a file, or a URI to a remote
+disk).  The output disk is the one created in the previous step.
 
  # virt-resize indisk outdisk
 
@@ -239,7 +239,7 @@ Similarly, to get non-sparse raw output use:
 
  fallocate -l size outdisk
 
-(on older systems that don't have the L<fallocate(1)> command use
+(on older systems that don’t have the L<fallocate(1)> command use
 C<dd if=/dev/zero of=outdisk bs=1M count=..>)
 
 =head2 LOGICAL PARTITIONS
@@ -398,6 +398,14 @@ Btrfs filesystems, if libguestfs was compiled with support for btrfs.
 
 XFS filesystems, if libguestfs was compiled with support for XFS.
 
+=item *
+
+Linux swap partitions.
+
+Please note that libguestfs I<destroys> the existing swap content
+by recreating it with C<mkswap>, so this should not be used when
+the guest is suspended.
+
 =back
 
 Note that you cannot use I<--expand> and I<--shrink> together.
@@ -455,7 +463,7 @@ L</MACHINE READABLE OUTPUT> below.
 
 =item B<--dry-run>
 
-Print a summary of what would be done, but don't do anything.
+Print a summary of what would be done, but don’t do anything.
 
 =item B<--no-copy-boot-loader>
 
@@ -515,7 +523,7 @@ L</QCOW2 AND NON-SPARSE RAW FORMATS>.
 
 =item B<--quiet>
 
-Don't print the summary.
+Don’t print the summary.
 
 =item B<--resize> PART=SIZE
 
@@ -784,7 +792,7 @@ derived from them, for supporting the C<xfs> filesystem.
 
 Virt-resize has no support for expanding that type of filesystem.
 
-In this case, there's nothing that can be done to let virt-resize
+In this case, there’s nothing that can be done to let virt-resize
 expand that type of filesystem.
 
 =back

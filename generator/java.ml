@@ -1,5 +1,5 @@
 (* libguestfs
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 
 open Printf
 
+open Common_utils
 open Types
 open Utils
 open Pr
@@ -156,7 +157,8 @@ public class GuestFS {
       pr "   *\n";
       pr "   * @see #set_event_callback\n";
       pr "   */\n";
-      pr "  public static final long EVENT_%s = 0x%x;\n" (String.uppercase name) bitmask;
+      pr "  public static final long EVENT_%s = 0x%x;\n"
+         (String.uppercase_ascii name) bitmask;
       pr "\n";
   ) events;
 
@@ -187,7 +189,7 @@ public class GuestFS {
    * <code>events</code> is one or more <code>EVENT_*</code> constants,
    * bitwise ORed together.
    * </p><p>
-   * When an event happens, the callback object's <code>event</code> method
+   * When an event happens, the callback object’s <code>event</code> method
    * is invoked like this:
    * </p>
    * <pre>
@@ -259,7 +261,7 @@ public class GuestFS {
       let ret, args, optargs = f.style in
 
       if is_documented f then (
-        let doc = replace_str f.longdesc "C<guestfs_" "C<g." in
+        let doc = String.replace f.longdesc "C<guestfs_" "C<g." in
         let doc =
           if optargs <> [] then
             doc ^ "\n\nOptional arguments are supplied in the final Map<String,Object> parameter, which is a hash of the argument name to its value (cast to Object).  Pass an empty Map or null for no optional arguments."
@@ -295,9 +297,18 @@ public class GuestFS {
         | Some version -> pr "   * @since %s\n" version
         );
         (match f with
-        | { deprecated_by = None } -> ()
-        | { deprecated_by = Some alt } ->
-          pr "   * @deprecated In new code, use {@link #%s} instead\n" alt
+        | { deprecated_by = Not_deprecated } -> ()
+        | { deprecated_by = Replaced_by alt } ->
+          (* Don't link to an undocumented function as javadoc will
+           * give a hard error.
+           *)
+          let f_alt = Actions.find alt in
+          if is_documented f_alt then
+            pr "   * @deprecated In new code, use {@link #%s} instead\n" alt
+          else
+            pr "   * @deprecated This is replaced by method #%s which is not exported by the Java bindings\n" alt
+        | { deprecated_by = Deprecated_no_replacement } ->
+          pr "   * @deprecated There is no documented replacement\n"
         );
         pr "   * @throws LibGuestFSException If there is a libguestfs error.\n";
         pr "   */\n";
@@ -305,8 +316,9 @@ public class GuestFS {
       pr "  ";
       let deprecated =
         match f with
-        | { deprecated_by = None } -> false
-        | { deprecated_by = Some _ } -> true in
+        | { deprecated_by = Not_deprecated } -> false
+        | { deprecated_by = Replaced_by _ | Deprecated_no_replacement } ->
+           true in
       generate_java_prototype ~public:true ~semicolon:false ~deprecated f.name f.style;
       pr "\n";
       pr "  {\n";
@@ -625,7 +637,7 @@ throw_out_of_memory (JNIEnv *env, const char *msg)
       );
       pr "JNICALL\n";
       pr "Java_com_redhat_et_libguestfs_GuestFS_";
-      pr "%s" (replace_str ("_" ^ name) "_" "_1");
+      pr "%s" (String.replace ("_" ^ name) "_" "_1");
       pr "  (JNIEnv *env, jobject obj, jlong jg";
       List.iter (
         function
@@ -684,13 +696,15 @@ throw_out_of_memory (JNIEnv *env, const char *msg)
            pr "  jobject jr;\n";
            pr "  jclass cl;\n";
            pr "  jfieldID fl;\n";
-           pr "  struct guestfs_%s *r;\n" typ
+           pr "  CLEANUP_FREE_%s struct guestfs_%s *r = NULL;\n"
+             (String.uppercase_ascii typ) typ
        | RStructList (_, typ) ->
            pr "  jobjectArray jr;\n";
            pr "  jclass cl;\n";
            pr "  jfieldID fl;\n";
            pr "  jobject jfl;\n";
-           pr "  struct guestfs_%s_list *r;\n" typ
+           pr "  CLEANUP_FREE_%s_LIST struct guestfs_%s_list *r = NULL;\n"
+             (String.uppercase_ascii typ) typ
        | RBufferOut _ ->
            pr "  jstring jr;\n";
            pr "  char *r;\n";
@@ -713,7 +727,7 @@ throw_out_of_memory (JNIEnv *env, const char *msg)
             pr "  size_t %s_size;\n" n
         | StringList n | DeviceList n | FilenameList n ->
             pr "  size_t %s_len;\n" n;
-            pr "  char **%s;\n" n
+            pr "  CLEANUP_FREE char **%s = NULL;\n" n
         | Bool n
         | Int n ->
             pr "  int %s;\n" n
@@ -732,7 +746,7 @@ throw_out_of_memory (JNIEnv *env, const char *msg)
           | OBool _ | OInt _ | OInt64 _ | OString _ -> ()
           | OStringList n ->
             pr "  size_t %s_len;\n" n;
-            pr "  char **%s;\n" n
+            pr "  CLEANUP_FREE char **%s = NULL;\n" n
         ) optargs
       );
 
@@ -855,7 +869,6 @@ throw_out_of_memory (JNIEnv *env, const char *msg)
               n;
             pr "    (*env)->ReleaseStringUTFChars (env, o, %s[i]);\n" n;
             pr "  }\n";
-            pr "  free (%s);\n" n
         | Bool _
         | Int _
         | Int64 _
@@ -873,7 +886,6 @@ throw_out_of_memory (JNIEnv *env, const char *msg)
               n;
             pr "    (*env)->ReleaseStringUTFChars (env, o, optargs_s.%s[i]);\n" n;
             pr "  }\n";
-            pr "  free (%s);\n" n
       ) optargs;
 
       pr "\n";
@@ -998,7 +1010,6 @@ and generate_java_struct_return typ jtyp cols =
         pr "  fl = (*env)->GetFieldID (env, cl, \"%s\", \"C\");\n" name;
         pr "  (*env)->SetCharField (env, jr, fl, r->%s);\n" name;
   ) cols;
-  pr "  free (r);\n";
   pr "  return jr;\n"
 
 and generate_java_struct_list_return typ jtyp cols =
@@ -1036,7 +1047,7 @@ and generate_java_struct_list_return typ jtyp cols =
       | FBuffer ->
         pr "    {\n";
         pr "      size_t len = r->val[i].%s_len;\n" name;
-        pr "      CLEANUP_FREE char *s = malloc (len);\n";
+        pr "      CLEANUP_FREE char *s = malloc (len + 1);\n";
         pr "      if (s == NULL) {\n";
         pr "        throw_out_of_memory (env, \"malloc\");\n";
         pr "        goto ret_error;\n";
@@ -1059,7 +1070,6 @@ and generate_java_struct_list_return typ jtyp cols =
   pr "    (*env)->SetObjectArrayElement (env, jr, i, jfl);\n";
   pr "  }\n";
   pr "\n";
-  pr "  guestfs_free_%s_list (r);\n" typ;
   pr "  return jr;\n"
 
 and generate_java_makefile_inc () =

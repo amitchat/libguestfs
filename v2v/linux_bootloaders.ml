@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -126,7 +126,7 @@ object
     let path = List.hd paths in
     let rex = Str.regexp ".*/title\\[\\([1-9][0-9]*\\)\\]/kernel" in
     if not (Str.string_match rex path 0) then
-      error (f_"internal error: regular expression did not match '%s'")
+      error (f_"internal error: regular expression did not match ‘%s’")
         path;
     let index = int_of_string (Str.matched_group 1 path) - 1 in
     g#aug_set (sprintf "/files%s/default" grub_config) (string_of_int index);
@@ -266,6 +266,7 @@ object (self)
     "/files/etc/default/grub/GRUB_CMDLINE_LINUX";
     "/files/etc/default/grub/GRUB_CMDLINE_LINUX_DEFAULT";
     "/files/boot/grub2/device.map/*[label() != \"#comment\"]";
+    "/files/boot/grub/device.map/*[label() != \"#comment\"]";
   ]
 
   method list_kernels =

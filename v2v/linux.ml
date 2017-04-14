@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,33 +44,32 @@ let rec remove g inspect packages =
     augeas_reload g
   )
 
-and do_remove g inspect packages =
+and do_remove g { i_package_format = package_format } packages =
   assert (List.length packages > 0);
-  let package_format = inspect.i_package_format in
   match package_format with
   | "deb" ->
     let cmd = [ "dpkg"; "--purge" ] @ packages in
     let cmd = Array.of_list cmd in
     ignore (g#command cmd);
+
   | "rpm" ->
     let cmd = [ "rpm"; "-e" ] @ packages in
     let cmd = Array.of_list cmd in
     ignore (g#command cmd)
 
   | format ->
-    error (f_"don't know how to remove packages using %s: packages: %s")
+    error (f_"don’t know how to remove packages using %s: packages: %s")
       format (String.concat " " packages)
 
 let file_list_of_package (g : Guestfs.guestfs) inspect app =
-  let package_format = inspect.i_package_format in
-
-  match package_format with
+  match inspect.i_package_format with
   | "deb" ->
     let cmd = [| "dpkg"; "-L"; app.G.app2_name |] in
     debug "%s" (String.concat " " (Array.to_list cmd));
     let files = g#command_lines cmd in
     let files = Array.to_list files in
     List.sort compare files
+
   | "rpm" ->
     (* Since RPM allows multiple packages installed with the same
      * name, always check the full ENVR here (RHBZ#1161250).
@@ -101,12 +100,12 @@ let file_list_of_package (g : Guestfs.guestfs) inspect app =
     let files = g#command_lines cmd in
     let files = Array.to_list files in
     List.sort compare files
+
   | format ->
-    error (f_"don't know how to get list of files from package using %s")
+    error (f_"don’t know how to get list of files from package using %s")
       format
 
-let rec file_owner (g : G.guestfs) inspect path =
-  let package_format = inspect.i_package_format in
+let rec file_owner (g : G.guestfs) { i_package_format = package_format } path =
   match package_format with
   | "deb" ->
       (* With dpkg usually the directories are owned by all the packages
@@ -129,8 +128,10 @@ let rec file_owner (g : G.guestfs) inspect path =
       let line =
         try String.sub line 0 (String.rindex line ':')
         with Invalid_argument _ ->
-          error (f_"internal error: file_owner: invalid dpkg output: '%s'") line in
+          error (f_"internal error: file_owner: invalid dpkg output: ‘%s’")
+                line in
       fst (String.split "," line)
+
   | "rpm" ->
       (* Although it is possible in RPM for multiple packages to own
        * a file, this deliberately only returns one package.
@@ -145,12 +146,12 @@ let rec file_owner (g : G.guestfs) inspect path =
            raise Not_found
          else
            raise exn
-       | Invalid_argument "index out of bounds" ->
+       | Invalid_argument _ (* pkgs.(0) raises index out of bounds *) ->
          error (f_"internal error: file_owner: rpm command returned no output")
       )
 
   | format ->
-    error (f_"don't know how to find file owner using %s") format
+    error (f_"don’t know how to find file owner using %s") format
 
 and is_file_owned g inspect path =
   try ignore (file_owner g inspect path); true

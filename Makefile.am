@@ -1,5 +1,5 @@
 # libguestfs
-# Copyright (C) 2009-2016 Red Hat Inc.
+# Copyright (C) 2009-2017 Red Hat Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -38,7 +38,8 @@ SUBDIRS += gnulib/tests
 endif
 
 # Basic source for the library.
-SUBDIRS += src docs examples po
+SUBDIRS += common/errnostring common/protocol common/utils
+SUBDIRS += lib docs examples po
 
 # The daemon and the appliance.
 if ENABLE_DAEMON
@@ -87,6 +88,14 @@ SUBDIRS += tests/regressions
 SUBDIRS += tests/tsk
 endif
 
+# Common code used by the tools.
+SUBDIRS += common/edit
+SUBDIRS += common/options
+SUBDIRS += common/parallel
+SUBDIRS += common/progress
+SUBDIRS += common/visit
+SUBDIRS += common/windows
+
 # libguestfs-test-tool
 SUBDIRS += test-tool
 
@@ -96,7 +105,7 @@ SUBDIRS += fish
 # virt-tools in C.
 SUBDIRS += align cat diff df edit format inspector make-fs rescue
 if HAVE_P2V
-SUBDIRS += p2v
+SUBDIRS += common/miniexpect p2v
 endif
 
 # bash-completion
@@ -146,7 +155,7 @@ if HAVE_OCAML
 SUBDIRS += \
 	mllib \
 	customize \
-	builder builder/website \
+	builder builder/templates \
 	get-kernel \
 	resize \
 	sparsify \
@@ -185,7 +194,7 @@ SUBDIRS += po-docs
 endif
 
 EXTRA_DIST = \
-	BUGS HACKING TODO \
+	AUTHORS BUGS HACKING TODO \
 	.gitignore \
 	.lvimrc \
 	.mailmap \
@@ -206,6 +215,11 @@ EXTRA_DIST = \
 	contrib/intro/vmm-icons-t.png \
 	contrib/intro/vmm-icons.png \
 	contrib/intro/win7.xml \
+	contrib/p2v/aux-scripts/do-build.sh \
+	contrib/p2v/build-p2v-iso.sh \
+	contrib/p2v/patches/0001-RHEL-5-ONLY-DISABLE-AUTOMATIC-REMOTE-PORT-ALLOCATION.patch \
+	contrib/p2v/patches/0002-RHEL-5-ONLY-QEMU-NBD-1.4-HAS-NO-f-OPTION.patch \
+	contrib/p2v/test-p2v-iso.sh \
 	contrib/README \
 	contrib/visualize-alignment/.gitignore \
 	contrib/visualize-alignment/guestfish-add-mount.qtr \
@@ -226,6 +240,7 @@ EXTRA_DIST = \
 	ocaml-link.sh \
 	podcheck.pl \
 	tests/automake2junit.ml \
+	tests/test-functions.sh \
 	tmp/.gitignore \
 	update-bugs.sh \
 	utils/README \
@@ -234,6 +249,9 @@ EXTRA_DIST = \
 	website/communicate.png \
 	website/documentation.png \
 	website/download.png \
+	website/download/builder/README \
+	website/download/builder/index \
+	website/download/builder/index.asc \
 	website/draft.png \
 	website/draft.svg \
 	website/easytoread.css \
@@ -248,13 +266,12 @@ EXTRA_DIST = \
 	zanata.xml \
 	zanata-pull.sh
 
-# XXX Eventually move builder/website under website/ top level directory.
-BUILDERFILES = \
-	builder/website/README \
-	builder/website/index \
-	builder/website/index.asc
-
 WEBSITEDIR = $(HOME)/d/websites/libguestfs
+
+BUILDERFILES = \
+	website/download/builder/README \
+	website/download/builder/index \
+	website/download/builder/index.asc
 
 noinst_DATA = \
 	website/index.html \
@@ -273,7 +290,6 @@ maintainer-upload-website:
 
 # When doing 'make dist' update a few files automatically.
 #
-#  AUTHORS        - list of authors (created from git)
 #  BUGS           - list of bugs (created from Bugzilla)
 #  ChangeLog      - changelog (created from git)
 #  docs/C_SOURCE_FILES
@@ -283,15 +299,9 @@ maintainer-upload-website:
 #                   special xgettext option [not generated here]
 #  po/POTFILES-ml - OCaml files, which need a special tool to translate
 
-dist-hook: AUTHORS BUGS ChangeLog docs/C_SOURCE_FILES po/POTFILES po/POTFILES-ml
-	cp AUTHORS $(distdir)/AUTHORS
+dist-hook: BUGS ChangeLog docs/C_SOURCE_FILES po/POTFILES po/POTFILES-ml
 	cp BUGS $(distdir)/BUGS
 	cp ChangeLog $(distdir)/ChangeLog
-
-AUTHORS: configure.ac
-	rm -f $@ $@-t
-	git shortlog -s | $(AWK) -F'\t' '{print $$2}' | sort -f > $@-t
-	mv $@-t $@
 
 BUGS: configure.ac
 	rm -f $@ $@-t
@@ -307,12 +317,12 @@ ChangeLog: configure.ac
 # to DIST_SUBDIRS.
 docs/C_SOURCE_FILES: configure.ac
 	rm -f $@ $@-t
-	find $(DIST_SUBDIRS) -name '*.c' | \
-	grep -v -E '^(builder/index-parse.c|builder/index-scan.c|examples/|gnulib/|gobject/|perl/|tests/|test-data/)' | \
-	grep -v -E '/((guestfs|rc)_protocol\.c)$$' | \
-	grep -v -E '.*/errnostring\.c$$' | \
-	grep -v -E '.*-gperf\.c$$' | \
-	LC_ALL=C sort > $@-t
+	find $(DIST_SUBDIRS) -name '*.[ch]' | \
+	grep -v -E '^(builder/index-parse\.|builder/index-scan\.|examples/|gnulib/|gobject/|java/com_redhat_et_libguestfs|perl/|php/extension/config\.h|ruby/ext/guestfs/extconf\.h|tests/|test-data/)' | \
+	grep -v -E '/(guestfs|rc)_protocol\.' | \
+	grep -v -E '.*/errnostring\.' | \
+	grep -v -E '.*-gperf\.' | \
+	LC_ALL=C sort -u > $@-t
 	mv $@-t $@
 
 # For more information about translations, see po/Makefile.am.
@@ -320,16 +330,18 @@ po/POTFILES: configure.ac
 	rm -f $@ $@-t
 	cd $(srcdir); \
 	find $(DIST_SUBDIRS) -name '*.c' -o -name '*.pl' -o -name '*.pm' | \
-	grep -v -E '^(examples|gnulib|gobject/docs|perl/(blib|examples)|perl/lib/Sys/Guestfs\.c|po-docs|tests|test-data)/' | \
+	grep -v -E '^(examples|gnulib|gobject/docs|perl/(blib|examples)|po-docs|tests|test-data)/' | \
 	grep -v -E '/((guestfs|rc)_protocol\.c)$$' | \
 	grep -v -E '^python/utils\.c$$' | \
-	LC_ALL=C sort > $@-t
+	grep -v -E '^perl/lib/Sys/Guestfs\.c$$' | \
+	LC_ALL=C sort -u > $@-t
 	mv $@-t $@
 
 po/POTFILES-ml: configure.ac
 	rm -f $@ $@-t
 	cd $(srcdir); \
 	find builder customize dib get-kernel mllib resize sparsify sysprep v2v -name '*.ml' | \
+	grep -v '^builder/templates/' | \
 	LC_ALL=C sort > $@-t
 	mv $@-t $@
 
@@ -498,6 +510,20 @@ check-slow: build-test-guests
 	done; \
 	exit $$(( $$errors ? 1 : 0 ))
 
+check-root: build-test-guests
+	@if test "$$(id -u)" -ne 0; then \
+	  echo "***"; \
+	  echo "*** error: You must run 'check-root' as root."; \
+	  echo "***"; \
+	  exit 1; \
+	fi
+	@errors=0; \
+	for f in `grep -l '^$@:' $(SUBDIRS:%=%/Makefile.am)`; do \
+	  echo $(MAKE) -C `dirname $$f` $@; \
+	  $(MAKE) -C `dirname $$f` $@ || (( errors++ )); \
+	done; \
+	exit $$(( $$errors ? 1 : 0 ))
+
 build-test-guests:
 	$(MAKE) -C test-data/phony-guests check
 
@@ -526,6 +552,21 @@ maintainer-commit:
 
 maintainer-tag:
 	git tag -a "v$(VERSION)" -m "Version $(VERSION) ($(BRANCH_TYPE))" -f
+
+# Maintainer only: compare authors (found in git commit messages) to
+# generator/authors.ml.
+maintainer-check-authors:
+	rm -f $@ $@-t
+	git shortlog -s | \
+	    $(AWK) -F'\t' '{print $$2}' | \
+	    sort -f | \
+	    while read author; do \
+	        if ! grep -sqiF "\"$$author\"," generator/authors.ml; then \
+	            echo "FAIL: $$author" is missing from generator/authors.ml; \
+	            exit 1; \
+	        fi; \
+	    done
+	@echo PASS: AUTHORS test
 
 # Maintainer only: check no files are missing from EXTRA_DIST rules,
 # and that all generated files have been included in the tarball.
@@ -571,8 +612,9 @@ help:
 	@echo "make check-with-upstream-qemu     Test using upstream qemu."
 	@echo "make check-with-upstream-libvirt  Test using upstream libvirt."
 	@echo "make check-slow                   Slow/long-running tests."
+	@echo "sudo make check-root              Tests which must be run as root."
 	@echo
-	@echo "make check-all                    Runs all 'check*' rules."
+	@echo "make check-all                    Runs all 'check*' rules except check-root."
 	@echo "make check-release                Runs 'check*' rules required for release."
 	@echo
 	@echo "make installcheck                 Test installed libguestfs packages."

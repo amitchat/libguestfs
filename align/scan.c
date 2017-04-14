@@ -66,6 +66,8 @@ int keys_from_stdin = 0;
 int echo_keys = 0;
 const char *libvirt_uri = NULL;
 int inspector = 0;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 
 static int quiet = 0;           /* --quiet */
 static int uuid = 0;            /* --uuid */
@@ -74,7 +76,7 @@ static void __attribute__((noreturn))
 usage (int status)
 {
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n"),
              getprogname ());
   else {
     printf (_("%s: check alignment of virtual machine partitions\n"

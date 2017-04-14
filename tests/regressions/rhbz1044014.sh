@@ -20,32 +20,14 @@
 # https://bugzilla.redhat.com/show_bug.cgi?id=1044014
 
 set -e
-export LANG=C
 
-if [ -n "$SKIP_TEST_RHBZ1044014_SH" ]; then
-    echo "$0: test skipped because environment variable is set."
-    exit 77
-fi
-
-# Check we are running against the libvirt backend.
-backend="$(guestfish get-backend)"
-if [[ ! ( "$backend" =~ ^libvirt ) ]]; then
-    echo "$0: test skipped because backend ($backend) is not libvirt."
-    exit 77
-fi
-
-if [ ! -x ../../src/libvirt-is-version ]; then
-    echo "$0: test skipped because libvirt-is-version is not built yet"
-    exit 77
-fi
-
-if ! ../../src/libvirt-is-version 1 2 1; then
-    echo "$0: test skipped because libvirt is too old (< 1.2.1)"
-    exit 77
-fi
+$TEST_FUNCTIONS
+skip_if_skipped
+skip_unless_backend libvirt
+skip_unless_libvirt_minimum_version 1 2 1
 
 # Set the backend to the test driver.
-export LIBGUESTFS_BACKEND="libvirt:test://$(pwd)/$srcdir/rhbz1044014.xml"
+export LIBGUESTFS_BACKEND="libvirt:test://$abs_srcdir/rhbz1044014.xml"
 
 rm -f rhbz1044014.out
 
@@ -70,7 +52,7 @@ grep "libvirt needs authentication to connect to libvirt URI" rhbz1044014.out ||
 
 # This is the error we are expecting to see.  If we see it then it
 # indicates that authentication was successful.
-grep "error: libvirt hypervisor doesn't support qemu or KVM" rhbz1044014.out || {
+grep "error: libvirt hypervisor doesn’t support qemu or KVM" rhbz1044014.out || {
     echo "$0: unexpected output:"
     echo
     cat rhbz1044014.out

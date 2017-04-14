@@ -59,14 +59,14 @@ your own too (see below).
 After choosing a guest from the list, you may want to see if there
 are any installation notes:
 
- virt-builder --notes fedora-20
+ virt-builder --notes fedora-25
 
 =head2 Build a virtual machine
 
- virt-builder fedora-20
+ virt-builder fedora-25
 
-will build a Fedora 20 image for the same architecture as virt-builder
-(so running it from an i386 installation will try to build an i386
+will build a Fedora 25 image for the same architecture as virt-builder
+(so running it from an i686 installation will try to build an i686
 image, if available).  This will have all default
 configuration (minimal size, no user accounts, random root password,
 only the bare minimum installed software, etc.).
@@ -77,57 +77,57 @@ The first time this runs it has to download the template over the
 network, but this gets cached (see L</CACHING>).
 
 The name of the output file is derived from the template name, so
-above it will be F<fedora-20.img>.  You can change the output filename
+above it will be F<fedora-25.img>.  You can change the output filename
 using the I<-o> option:
 
- virt-builder fedora-20 -o mydisk.img
+ virt-builder fedora-25 -o mydisk.img
 
 You can also use the I<-o> option to write to existing devices or
 logical volumes.
 
- virt-builder fedora-20 --format qcow2
+ virt-builder fedora-25 --format qcow2
 
-As above, but write the output in qcow2 format to F<fedora-20.qcow2>.
+As above, but write the output in qcow2 format to F<fedora-25.qcow2>.
 
- virt-builder fedora-20 --size 20G
+ virt-builder fedora-25 --size 20G
 
 As above, but the output size will be 20 GB.  The guest OS is resized
 as it is copied to the output (automatically, using
 L<virt-resize(1)>).
 
- virt-builder fedora-20 --arch i386
+ virt-builder fedora-25 --arch i686
 
-As above, but using an i386 template, if available.
+As above, but using an i686 template, if available.
 
 =head2 Setting the root password
 
- virt-builder fedora-20 --root-password file:/tmp/rootpw
+ virt-builder fedora-25 --root-password file:/tmp/rootpw
 
-Create a Fedora 20 image.  The root password is taken from the file
+Create a Fedora 25 image.  The root password is taken from the file
 F</tmp/rootpw>.
 
-Note if you I<don't> set I<--root-password> then the guest is given
-a I<random> root password.
+Note if you I<don’t> set I<--root-password> then the guest is given
+a I<random> root password which is printed on stdout.
 
 You can also create user accounts.  See L</USERS AND PASSWORDS> below.
 
 =head2 Set the hostname
 
- virt-builder fedora-20 --hostname virt.example.com
+ virt-builder fedora-25 --hostname virt.example.com
 
 Set the hostname to C<virt.example.com>.
 
 =head2 Installing software
 
 To install packages from the ordinary (guest) software repository
-(eg. yum or apt):
+(eg. dnf or apt):
 
- virt-builder fedora-20 --install "inkscape,@Xfce Desktop"
+ virt-builder fedora-25 --install "inkscape,@Xfce Desktop"
 
 (In Fedora, C<@> is used to install groups of packages.  On Debian
 you would install a meta-package instead.)
 
-To update the core packages to the latest version:
+To update the installed packages to the latest version:
 
  virt-builder debian-7 --update
 
@@ -135,7 +135,7 @@ For guests which use SELinux, like Fedora and Red Hat Enterprise
 Linux, you may need to do SELinux relabelling after installing or
 updating packages (see L</SELINUX> below):
 
- virt-builder fedora-20 --update --selinux-relabel
+ virt-builder fedora-25 --update --selinux-relabel
 
 =head2 Customizing the installation
 
@@ -149,27 +149,27 @@ I<--edit> to edit files.  I<--upload> to upload files.
 
 For example:
 
- cat <<'EOF' > /tmp/yum-update.sh
- yum -y update
+ cat <<'EOF' > /tmp/dnf-update.sh
+ dnf -y --best update
  EOF
  
- virt-builder fedora-20 --firstboot /tmp/yum-update.sh
+ virt-builder fedora-25 --firstboot /tmp/dnf-update.sh
 
 or simply:
 
- virt-builder fedora-20 --firstboot-command 'yum -y update'
+ virt-builder fedora-25 --firstboot-command 'dnf -y --best update'
 
-which makes the L<yum(8)> C<update> command run once the first time
+which makes the L<dnf(8)> C<update> command run once the first time
 the guest boots.
 
 Or:
 
- virt-builder fedora-20 \
-   --edit '/etc/yum.conf:
+ virt-builder fedora-25 \
+   --edit '/etc/dnf/dnf.conf:
              s/gpgcheck=1/gpgcheck=0/'
 
-which edits F</etc/yum.conf> inside the disk image (during disk image
-creation, long before boot).
+which edits F</etc/dnf/dnf.conf> inside the disk image (during disk
+image creation, long before boot).
 
 You can combine these options, and have multiple options of all types.
 
@@ -235,7 +235,7 @@ Also this doesn't cache packages (the I<--install>, I<--update> options).
 
 =item B<--no-check-signature>
 
-Check/don't check the digital signature of the OS template.  The
+Check/don’t check the digital signature of the OS template.  The
 default is to check the signature and exit if it is not correct.
 Using I<--no-check-signature> bypasses this check.
 
@@ -263,7 +263,7 @@ Delete the template cache.  See L</CACHING>.
 
 =item B<--no-delete-on-failure>
 
-Don't delete the output file on failure to build.  You can use this to
+Don’t delete the output file on failure to build.  You can use this to
 debug failures to run scripts.  See L</DEBUGGING BUILDS> for ways to
 debug images.
 
@@ -301,6 +301,9 @@ This option extracts the kernel and initramfs from a previously built
 disk image called C<IMAGE> (in fact it works for any VM disk image,
 not just ones built using virt-builder).
 
+Note this method is B<deprecated>: there is a separate tool for this,
+L<virt-get-kernel(1)>, which has more options for the file extraction.
+
 The kernel and initramfs are written to the current directory, unless
 you also specify the I<--output> C<outputdir> B<directory> name.
 
@@ -314,8 +317,10 @@ F</boot> directory of a guest, see L<virt-copy-out(1)>.
 
 =item B<--gpg> GPG
 
-Specify an alternate L<gpg(1)> (GNU Privacy Guard) binary.  You can
-also use this to add gpg parameters, for example to specify an
+Specify an alternate L<gpg(1)> (GNU Privacy Guard) binary.  By default
+virt-builder looks for either C<gpg2> or C<gpg> in the C<$PATH>.
+
+You can also use this to add gpg parameters, for example to specify an
 alternate home directory:
 
  virt-builder --gpg "gpg --homedir /tmp" [...]
@@ -415,14 +420,14 @@ don't need the network.
 
 =item 3.
 
-You don't want untrusted guest code trying to access your host network
+You don’t want untrusted guest code trying to access your host network
 when running virt-builder.  This is particularly an issue when you
 don't trust the source of the operating system templates.  (See
 L</SECURITY> below).
 
 =item 4.
 
-You don't have a host network (eg. in secure/restricted environments).
+You don’t have a host network (eg. in secure/restricted environments).
 
 =back
 
@@ -430,9 +435,9 @@ You don't have a host network (eg. in secure/restricted environments).
 
 Do not sync the output file on exit.
 
-Virt-builder fsync's the output file or disk image when it exits.
+Virt-builder C<fsync>s the output file or disk image when it exits.
 
-The reason is that qemu/KVM's default caching mode is C<none> or
+The reason is that qemu/KVM’s default caching mode is C<none> or
 C<directsync>, both of which bypass the host page cache.  Therefore
 these would not work correctly if you immediately started the guest
 after running virt-builder - they would not see the complete output
@@ -452,7 +457,7 @@ the install).
 
 =item B<--output> filename
 
-Write the output to F<filename>.  If you don't specify this option,
+Write the output to F<filename>.  If you don’t specify this option,
 then the output filename is generated by taking the C<os-version>
 string and adding C<.img> (for raw format) or C<.qcow2> (for qcow2
 format).
@@ -471,7 +476,7 @@ Print information about the template cache.  See L</CACHING>.
 
 =item B<--quiet>
 
-Don't print ordinary progress messages.
+Don’t print ordinary progress messages.
 
 =item B<--size> SIZE
 
@@ -501,7 +506,7 @@ You can give this option multiple times to specify multiple sources.
 
 See also L</SOURCES OF TEMPLATES> below.
 
-Note that you should not point I<--source> to sources that you don't
+Note that you should not point I<--source> to sources that you don’t
 trust (unless the source is signed by someone you do trust).  See also
 the I<--no-network> option.
 
@@ -552,16 +557,16 @@ If the guest OS you are installing is similar to the host OS (eg.
 both are Linux), and if libguestfs supports network connections, then
 you can use I<--install> to install packages like this:
 
- virt-builder fedora-20 --install inkscape
+ virt-builder fedora-25 --install inkscape
 
-This uses the guest's package manager and the host's network
+This uses the guest’s package manager and the host’s network
 connection.
 
 =head3 Updating packages at build time
 
-To update the core set of packages in the template at build time:
+To update the installed packages in the template at build time:
 
- virt-builder fedora-20 --update
+ virt-builder fedora-25 --update
 
 Most of the templates that ship with virt-builder come with a very
 minimal selection of packages (known as a "JEOS" or "Just Enough
@@ -573,13 +578,13 @@ OS from the template.  This option updates those template packages.
 
 Another option is to install the packages when the guest first boots:
 
- virt-builder fedora-20 --firstboot-install inkscape
+ virt-builder fedora-25 --firstboot-install inkscape
 
-This uses the guest's package manager and the guest's network
+This uses the guest’s package manager and the guest’s network
 connection.
 
 The downsides are that it will take the guest a lot longer to boot
-first time, and there's nothing much you can do if package
+first time, and there’s nothing much you can do if package
 installation fails (eg. if a network problem means the guest can't
 reach the package repositories).
 
@@ -596,7 +601,7 @@ L<virt-make-fs(1)>.  For genisoimage, use a command like this:
  genisoimage -o extra-packages.iso -R -J -V EXTRA cdcontents/
 
 Create a script that mounts the ISO and sets up the repository.  For
-yum, create /tmp/install.sh containing:
+dnf, create /tmp/install.sh containing:
 
  mkdir /tmp/mount
  mount LABEL=EXTRA /tmp/mount
@@ -608,7 +613,7 @@ yum, create /tmp/install.sh containing:
  enabled=1
  EOF
  
- yum -y install famousdatabase
+ dnf -y install famousdatabase
 
 For apt, create /tmp/install.sh containing:
 
@@ -621,7 +626,7 @@ For apt, create /tmp/install.sh containing:
 Use the I<--attach> option to attach the CD / disk image and the
 I<--run> option to run the script:
 
- virt-builder fedora-20 \
+ virt-builder fedora-25 \
    --attach extra-packages.iso \
    --run /tmp/install.sh
 
@@ -700,7 +705,7 @@ keyboard for some common Linux distributions.
 
 For distros that use systemd C<localectl>, use a command like this:
 
- virt-builder fedora-20 \
+ virt-builder fedora-25 \
    --firstboot-command 'localectl set-keymap uk'
 
 See L<localectl(1)> and
@@ -724,7 +729,7 @@ For Debian-derived distros using F</etc/default/keyboard>, upload or
 modify the keyboard file using the I<--upload>, I<--write> or
 I<--edit> options.  For example:
 
- virt-builder debian-7 \
+ virt-builder debian-8 \
    --edit '/etc/default/keyboard: s/^XKBLAYOUT=.*/XKBLAYOUT="gb"/'
 
 See L<https://wiki.debian.org/Keyboard>.
@@ -742,9 +747,9 @@ of virt-builder to do this.
 
 This section contains examples for some common Linux distributions.
 
-=head3 Setting Japanese in Fedora 20
+=head3 Setting Japanese in Fedora 25
 
- virt-builder fedora-20 \
+ virt-builder fedora-25 \
    --size 20G \
    --update \
    --install @japanese-support \
@@ -755,7 +760,7 @@ This section contains examples for some common Linux distributions.
    --firstboot-command 'localectl set-keymap jp' \
    --firstboot-command 'systemctl isolate graphical.target'
 
-=head3 Setting Japanese in Debian 7 (Wheezy)
+=head3 Setting Japanese in Debian 8 (Jessie)
 
 Note that although this enables Japanese in the text console too, it
 is unlikely that you will see properly rendered Japanese there.
@@ -763,15 +768,14 @@ However Japanese is properly rendered in X applications and terminals.
 
  pkgs=locales,xfce4,\
  ibus,ibus-anthy,\
- ttf-sazanami-gothic,ttf-sazanami-mincho,\
+ fonts-ipafont-gothic,fonts-ipafont-mincho,\
  fonts-takao-mincho,\
  xfonts-intl-japanese,xfonts-intl-japanese-big,\
  iceweasel-l10n-ja,manpages-ja
  
- virt-builder debian-7 \
+ virt-builder debian-8 \
    --size 20G \
    --install $pkgs \
-   --edit '/etc/inittab: s,^#([1-9].*respawn.*/sbin/getty.*),$1,' \
    --edit '/etc/locale.gen: s,^#\s*ja,ja,' \
    --write '/etc/default/locale:LANG="ja_JP.UTF-8"' \
    --run-command "locale-gen"
@@ -786,7 +790,7 @@ logged in one of the following locations:
 
 =item F</tmp/builder.log>
 
-On Linux, BSD and other guests.
+On Linux, BSD, and other non-Windows guests.
 
 =item F<C:\Temp\builder.log>
 
@@ -798,7 +802,7 @@ If F</tmp> or F<C:\Temp> is missing.
 
 =back
 
-If you don't want the log file to appear in the final image, then
+If you don’t want the log file to appear in the final image, then
 use the I<--no-logfile> command line option.
 
 =head2 SSH KEYS
@@ -808,7 +812,7 @@ the guest, so they can login without supplying a password.
 
 The C<SELECTOR> part of the option value is optional; in this case,
 I<--ssh-inject> C<USER> means that we look in the I<current>
-user's F<~/.ssh> directory to find the default public ID file.  That
+user’s F<~/.ssh> directory to find the default public ID file.  That
 key is uploaded.  "default public ID" is the I<default_ID_file> file
 described in L<ssh-copy-id(1)>.
 
@@ -973,7 +977,7 @@ I<--import> option.
 
  virt-install --import \
    --name guest --ram 2048 \
-   --disk path=disk.img,format=raw --os-variant fedora20
+   --disk path=disk.img,format=raw --os-variant fedora25
 
 Notes:
 
@@ -982,7 +986,7 @@ Notes:
 =item 1.
 
 You I<must> specify the correct format.  The format is C<raw> unless
-you used virt-builder's I<--format> option.
+you used virt-builder’s I<--format> option.
 
 =item 2.
 
@@ -1008,22 +1012,22 @@ tools probably work differently as well.
 
 Import the image into Glance (the OpenStack image store) by doing:
 
- glance image-create --name fedora-20-image --file fedora-20.img \
+ glance image-create --name fedora-25-image --file fedora-25.img \
    --disk-format raw --container-format bare \
    --is-public True
 
 The I<--file> parameter is the virt-builder-generated disk image.  It
-should match virt-builder's I<--output> option.  The I<--disk-format>
-parameter should match virt-builder's I<--format> option (or C<raw> if
+should match virt-builder’s I<--output> option.  The I<--disk-format>
+parameter should match virt-builder’s I<--format> option (or C<raw> if
 you didn't use that option).  The I<--container-format> should always
 be C<bare> since virt-builder doesn't put images into containers.
 
-You can use the S<C<glance image-show I<fedora-20-image>>> command to
+You can use the S<C<glance image-show I<fedora-25-image>>> command to
 display the properties of the image.
 
 To boot up an instance of your image on a Nova compute node, do:
 
- nova boot fedora-20-server --image fedora-20-image \
+ nova boot fedora-25-server --image fedora-25-image \
    --flavor m1.medium
 
 Use S<C<nova flavor-list>> to list possible machine flavors.  Use
@@ -1054,18 +1058,18 @@ at boot.
 
 A typical virt-builder command would be:
 
- virt-builder fedora-20 \
+ virt-builder fedora-25 \
    --hostname client.example.com \
    --update \
    --install puppet \
-   --edit '/etc/puppet/puppet.conf:
-       s/^\[agent\]/[agent]\n  server = puppetmaster.example.com/' \
+   --append-line '/etc/puppet/puppet.conf:[agent]' \
+   --append-line '/etc/puppet/puppet.conf:server = puppetmaster.example.com/' \
    --run-command 'systemctl enable puppet' \
    --selinux-relabel
 
 The precise instructions vary according to the Linux distro.  For
 further information see:
-L<http://docs.puppetlabs.com/guides/installation.htm>
+L<https://docs.puppet.com/puppet/latest/install_pre.html>
 
 =head2 DEBUGGING BUILDS
 
@@ -1235,7 +1239,7 @@ out the information in this index file.
 
 The templates hosted on libguestfs.org were created using shell
 scripts, kickstart files and preseed files which can be found in the
-libguestfs source tree, in C<builder/website>.
+libguestfs source tree, in C<builder/templates>.
 
 =head3 Setting up the repository
 
@@ -1256,7 +1260,7 @@ filesystem.
 
 =head3 Setting up a GPG key
 
-If you don't have a GnuPG key, you will need to set one up.  (Strictly
+If you don’t have a GnuPG key, you will need to set one up.  (Strictly
 speaking this is optional, but if your index and template files are
 not signed then virt-builder users will have to use the
 I<--no-check-signature> flag every time they use virt-builder.)
@@ -1273,7 +1277,11 @@ Export your GPG public key:
 There are many ways to create the templates.  For example you could
 clone existing guests (see L<virt-sysprep(1)>), or you could install a
 guest by hand (L<virt-install(1)>).  To see how the templates were
-created for virt-builder, look at the scripts in C<builder/website>
+created for virt-builder, look at the scripts in C<builder/templates>
+
+Virt-builder supports any image format (e.g. raw, qcow2, etc) as
+template, both as-is, and compressed as XZ.  This way, existing images
+(e.g. cleaned using L<virt-sysprep(1)>) can be used as templates.
 
 For best results when compressing the templates, use the following xz
 options (see L<nbdkit-xz-plugin(1)> for further explanation):
@@ -1364,12 +1372,12 @@ The file can be created as follows:
 
 =item C<checksum[sha512]=7b882fe9b82eb0fef...>
 
-The SHA-512 checksum of the B<compressed> file is checked after it is
-downloaded.  To work out the signature, do:
+The SHA-512 checksum of the file specified in I<file=..> is checked
+after it is downloaded.  To work out the signature, do:
 
  sha512sum disk.xz
 
-Note if you use this, you don't need to sign the file, ie. don't use
+Note if you use this, you don’t need to sign the file, ie. don’t use
 C<sig>.  This option overrides C<sig>.
 
 =item C<checksum=7b882fe9b82eb0fef...>
@@ -1393,9 +1401,10 @@ The revision number is optional.  If omitted it defaults to C<1>.
 
 =item C<format=qcow2>
 
-Specify the format of the disk image (before it was compressed).  If
-not given, the format is autodetected, but generally it is better to
-be explicit about the intended format.
+Specify the format of the disk image; in case it is compressed, that
+is the format before the compression.  If not given, the format is
+autodetected, but generally it is better to be explicit about the
+intended format.
 
 Note this is the source format, which is different from the
 I<--format> option (requested output format).  Virt-builder does
@@ -1416,8 +1425,9 @@ I<--size> option.
 
 =item C<compressed_size=NNN>
 
-The compressed size of the disk image in bytes.  This is just used for
-information (when using I<--list --long>).
+The actual size of the disk image in bytes, i.e. what was specified
+in I<file=..>.  This is just used for information (when using C<long>,
+and C<json> formats of I<--list>).
 
 =item C<expand=/dev/sdaX>
 
@@ -1425,9 +1435,9 @@ When expanding the image to its final size, instruct L<virt-resize(1)>
 to expand the named partition in the guest image to fill up all
 available space.  This works like the virt-resize I<--expand> option.
 
-You should usually put the device name of the guest's root filesystem here.
+You should usually put the device name of the guest’s root filesystem here.
 
-It's a good idea to use this, but not required.  If the field is
+It’s a good idea to use this, but not required.  If the field is
 omitted then virt-resize will create an extra partition at the end of
 the disk to cover the free space, which is much less user-friendly.
 
@@ -1437,7 +1447,7 @@ When expanding the image to its final size, instruct L<virt-resize(1)>
 to expand the named logical volume in the guest image to fill up all
 available space.  This works like the virt-resize I<--lv-expand> option.
 
-If the guest uses LVM2 you should usually put the LV of the guest's
+If the guest uses LVM2 you should usually put the LV of the guest’s
 root filesystem here.  If the guest does not use LVM2 or its root
 filesystem is not on an LV, don't use this option.
 
@@ -1527,7 +1537,7 @@ The index is always encoded in UTF-8.
 =head3 Caching templates
 
 Since the templates are usually very large, downloaded templates are
-cached in the user's home directory.
+cached in the user’s home directory.
 
 The location of the cache is F<$XDG_CACHE_HOME/virt-builder/> or
 F<$HOME/.cache/virt-builder>.
@@ -1566,18 +1576,11 @@ To increase both speed and reliability of installing packages, you can
 set up a local mirror of the target distribution, and point the guest
 package manager at that.
 
-Because of the order in which each phase of installation happens, you
-cannot use I<--write> (to point the package manager at a repo)
-followed by I<--install> (to install from that repo).  The I<--write>
-and I<--install> steps run in the opposite order, regardless of their
-order on the command line.  You have to do this using I<--run-command>
-instead of I<--install>.
-
 =head4 Using a local mirror with Fedora
 
 To install a Fedora guest using a local mirror:
 
- virt-builder fedora-20 \
+ virt-builder fedora-25 \
    --edit '/etc/yum.repos.d/fedora.repo:
        s{.*baseurl=.*}{baseurl=http://example.com/mirror/};
        s{.*metalink=.*}{};
@@ -1586,8 +1589,8 @@ To install a Fedora guest using a local mirror:
        s{.*baseurl=.*}{baseurl=http://example.com/mirror-updates/};
        s{.*metalink=.*}{};
    ' \
-   --run-command 'yum -y update' \
-   --run-command 'yum -y install pkg1 pkg2 ...'
+   --run-command 'dnf -y update' \
+   --install 'pkg1,pkg2,...'
 
 =head4 Using a local mirror with Debian
 
@@ -1595,10 +1598,10 @@ Assuming that you are using C<apt-proxy> to mirror the repository, you
 should create a new F<sources.list> file to point to your proxy (see
 L<https://help.ubuntu.com/community/AptProxy>) and then do:
 
- virt-builder debian-7 \
+ virt-builder debian-8 \
    --upload sources.list:/etc/apt/sources.list \
    --run-command 'apt-get -y update' \
-   --run-command 'apt-get -y install pkg1 pkg2 ...'
+   --install 'pkg1,pkg2,...'
 
 =head2 DIGITAL SIGNATURES
 
@@ -1608,18 +1611,18 @@ index and templates have not been tampered with.
 The source points to an index file, which is optionally signed.
 
 Virt-builder downloads the index and checks that the signature is
-valid and the signer's fingerprint matches the specified fingerprint
+valid and the signer’s fingerprint matches the specified fingerprint
 (ie. the one specified in I<gpgkey=..> in the I<.conf>, or with
 I<--fingerprint>, in that order).
 
 For checking against the built-in public key/fingerprint, this
-requires importing the public key into the user's local gpg keyring
-(that's just the way that gpg works).
+requires importing the public key into the user’s local gpg keyring
+(that’s just the way that gpg works).
 
 When a template is downloaded, its signature is checked in the same
 way.
 
-Although the signatures are optional, if you don't have them then
+Although the signatures are optional, if you don’t have them then
 virt-builder users will have to use I<--no-check-signature> on the
 command line.  This prevents an attacker from replacing the signed
 index file with an unsigned index file and having virt-builder
@@ -1650,7 +1653,7 @@ commands do not run on the host.  If you are using the libguestfs
 libvirt backend and have SELinux enabled then the virtual machine is
 additionally encapsulated in an SELinux container (sVirt).
 
-However these options will have access to the host's network and since
+However these options will have access to the host’s network and since
 the template may contain untrusted code, the code might try to access
 host network resources which it should not.  You can use
 I<--no-network> to prevent this.
@@ -1874,12 +1877,14 @@ L<guestfish(1)>,
 L<guestmount(1)>,
 L<virt-copy-out(1)>,
 L<virt-customize(1)>,
+L<virt-get-kernel(1)>,
 L<virt-install(1)>,
 L<virt-rescue(1)>,
 L<virt-resize(1)>,
 L<virt-sysprep(1)>,
 L<oz-install(1)>,
 L<gpg(1)>,
+L<gpg2(1)>,
 L<curl(1)>,
 L<virt-make-fs(1)>,
 L<genisoimage(1)>,

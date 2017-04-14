@@ -42,8 +42,6 @@ type cmdline = {
   root_label : string option;
   install_type : string;
   image_cache : string option;
-  compressed : bool;
-  qemu_img_options : string option;
   mkfs_options : string option;
   is_ramdisk : bool;
   ramdisk_element : string;
@@ -52,10 +50,11 @@ type cmdline = {
   network : bool;
   smp : int option;
   delete_on_failure : bool;
-  formats : string list;
+  formats : Output_format.set;
   arch : string;
   envvars : string list;
-  docker_target : string option;
+  checksum : bool;
+  python : string option;
 }
 
 let parse_cmdline () =
@@ -105,16 +104,17 @@ read the man page virt-dib(1).
   let smp = ref None in
   let set_smp arg = smp := Some arg in
 
-  let formats = ref ["qcow2"] in
+  let formats = ref None in
   let set_format arg =
     let fmts = remove_duplicates (String.nsplit "," arg) in
-    List.iter (
-      function
-      | "qcow2" | "tar" | "raw" | "vhd" | "docker" -> ()
-      | fmt ->
-        error (f_"invalid format '%s' in --formats") fmt
-    ) fmts;
-    formats := fmts in
+    let fmtset =
+      List.fold_left (
+        fun fmtset fmt ->
+          try Output_format.add_to_set fmt fmtset
+          with Not_found ->
+            error (f_"invalid format ‘%s’ in --formats") fmt
+      ) Output_format.empty_set fmts in
+    formats := Some fmtset in
 
   let envvars = ref [] in
   let append_envvar arg = push_front arg envvars in
@@ -136,15 +136,10 @@ read the man page virt-dib(1).
   let image_cache = ref None in
   let set_image_cache arg = image_cache := Some arg in
 
-  let compressed = ref true in
-
   let delete_on_failure = ref true in
 
   let is_ramdisk = ref false in
   let ramdisk_element = ref "ramdisk" in
-
-  let qemu_img_options = ref None in
-  let set_qemu_img_options arg = qemu_img_options := Some arg in
 
   let mkfs_options = ref None in
   let set_mkfs_options arg = mkfs_options := Some arg in
@@ -155,8 +150,10 @@ read the man page virt-dib(1).
   let append_extra_packages arg =
     prepend (List.rev (String.nsplit "," arg)) extra_packages in
 
-  let docker_target = ref None in
-  let set_docker_target arg = docker_target := Some arg in
+  let checksum = ref false in
+
+  let python = ref None in
+  let set_python arg = python := Some arg in
 
   let argspec = [
     [ S 'p'; L"element-path" ],           Getopt.String ("path", append_element_path),  s_"Add new a elements location";
@@ -165,18 +162,16 @@ read the man page virt-dib(1).
     [ L"exclude-script" ], Getopt.String ("script", append_excluded_script),
       s_"Exclude the specified script";
     [ L"envvar" ],     Getopt.String ("envvar[=value]", append_envvar),   s_"Carry/set this environment variable";
-    [ L"skip-base" ],  Getopt.Clear use_base,        s_"Skip the inclusion of the 'base' element";
+    [ L"skip-base" ],  Getopt.Clear use_base,        s_"Skip the inclusion of the ‘base’ element";
     [ L"root-label" ], Getopt.String ("label", set_root_label), s_"Label for the root fs";
     [ L"install-type" ], Getopt.Set_string ("type", install_type),  s_"Installation type";
     [ L"image-cache" ], Getopt.String ("directory", set_image_cache), s_"Location for cached images";
-    [ S 'u' ],           Getopt.Clear compressed,      "Do not compress the qcow2 image";
-    [ L"qemu-img-options" ], Getopt.String ("option", set_qemu_img_options),
-                                              s_"Add qemu-img options";
     [ L"mkfs-options" ], Getopt.String ("option", set_mkfs_options),
                                               s_"Add mkfs options";
     [ L"extra-packages" ], Getopt.String ("pkg,...", append_extra_packages),
       s_"Add extra packages to install";
-    [ L"docker-target" ], Getopt.String ("target", set_docker_target), s_"Repo and tag for docker";
+    [ L"checksum" ],   Getopt.Set checksum,          s_"Generate MD5 and SHA256 checksum files";
+    [ L"python" ],     Getopt.String ("python", set_python),         s_"Set Python interpreter";
 
     [ L"ramdisk" ],    Getopt.Set is_ramdisk,        "Switch to a ramdisk build";
     [ L"ramdisk-element" ], Getopt.Set_string ("name", ramdisk_element), s_"Main element for building ramdisks";
@@ -194,12 +189,13 @@ read the man page virt-dib(1).
     [ L"no-network" ], Getopt.Clear network,      s_"Disable appliance network";
     [ L"smp" ],        Getopt.Int ("vcpus", set_smp),           s_"Set number of vCPUs";
     [ L"no-delete-on-failure" ], Getopt.Clear delete_on_failure,
-                                               s_"Don't delete output file on failure";
+                                               s_"Don’t delete output file on failure";
     [ L"machine-readable" ], Getopt.Set machine_readable, s_"Make output machine readable";
 
     [ L"debug" ],      Getopt.Int ("level", set_debug),         s_"Set debug level";
     [ S 'B' ],           Getopt.Set_string ("path", basepath),   s_"Base path of diskimage-builder library";
   ] in
+  let argspec = argspec @ Output_format.extra_args () in
 
   let opthandle = create_standard_options argspec ~anon_fun:append_element usage_msg in
   Getopt.parse opthandle;
@@ -225,46 +221,58 @@ read the man page virt-dib(1).
   let root_label = !root_label in
   let install_type = !install_type in
   let image_cache = !image_cache in
-  let compressed = !compressed in
   let delete_on_failure = !delete_on_failure in
   let is_ramdisk = !is_ramdisk in
   let ramdisk_element = !ramdisk_element in
-  let qemu_img_options = !qemu_img_options in
   let mkfs_options = !mkfs_options in
   let machine_readable = !machine_readable in
   let extra_packages = List.rev !extra_packages in
-  let docker_target = !docker_target in
+  let checksum = !checksum in
+  let python = !python in
 
   (* No elements and machine-readable mode?  Print some facts. *)
   if elements = [] && machine_readable then (
     printf "virt-dib\n";
-    printf "output:qcow2\n";
-    printf "output:tar\n";
-    printf "output:raw\n";
-    printf "output:vhd\n";
-    printf "output:docker\n";
+    let formats_list = Output_format.list_formats () in
+    List.iter (printf "output:%s\n") formats_list;
     exit 0
   );
 
   if basepath = "" then
     error (f_"-B must be specified");
 
-  if formats = [] then
-    error (f_"the list of output formats cannot be empty");
+  let formats =
+    match formats with
+    | None -> Output_format.add_to_set "qcow2" Output_format.empty_set
+    | Some fmtset ->
+      if Output_format.set_cardinal fmtset = 0 then
+        error (f_"the list of output formats cannot be empty");
+      fmtset in
 
   if elements = [] then
     error (f_"at least one distribution root element must be specified");
+
+  let python =
+    match python with
+    | Some exe ->
+      let p =
+        if String.find exe Filename.dir_sep <> -1 then (
+          Unix.access exe [Unix.X_OK];
+          exe
+        ) else
+          get_required_tool exe in
+      Some p
+    | None -> None in
 
   { debug = debug; basepath = basepath; elements = elements;
     excluded_elements = excluded_elements; element_paths = element_paths;
     excluded_scripts = excluded_scripts; use_base = use_base; drive = drive;
     drive_format = drive_format; image_name = image_name; fs_type = fs_type;
     size = size; root_label = root_label; install_type = install_type;
-    image_cache = image_cache; compressed = compressed;
-    qemu_img_options = qemu_img_options; mkfs_options = mkfs_options;
+    image_cache = image_cache; mkfs_options = mkfs_options;
     is_ramdisk = is_ramdisk; ramdisk_element = ramdisk_element;
     extra_packages = extra_packages; memsize = memsize; network = network;
     smp = smp; delete_on_failure = delete_on_failure;
     formats = formats; arch = arch; envvars = envvars;
-    docker_target = docker_target;
+    checksum = checksum; python = python;
   }

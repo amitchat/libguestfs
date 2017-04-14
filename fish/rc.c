@@ -1,5 +1,5 @@
 /* guestfish - guest filesystem shell
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -68,7 +68,7 @@ create_sockdir (void)
       (statbuf.st_mode & 0777) != 0700 ||
       statbuf.st_uid != euid)
     error (EXIT_FAILURE, 0,
-           _("'%s' is not a directory or has insecure owner or permissions"),
+           _("‘%s’ is not a directory or has insecure owner or permissions"),
            dir);
 }
 
@@ -101,13 +101,12 @@ receive_stdout (int s)
   int fd;
   char buf[1];
 
+  memset (&msg, 0, sizeof msg);
+
   msg.msg_iov = &iov;
   msg.msg_iovlen = 1;
   iov.iov_base = buf;
   iov.iov_len = sizeof buf;
-
-  msg.msg_name = NULL;
-  msg.msg_namelen = 0;
 
   msg.msg_control = control_un.control;
   msg.msg_controllen = sizeof (control_un.control);
@@ -163,6 +162,7 @@ send_stdout (int s)
    * It's unclear if this is hiding a real problem or not.  XXX
    */
   memset (&control_un, 0, sizeof control_un);
+  memset (&msg, 0, sizeof msg);
 
   /* On Linux you have to transmit at least 1 byte of real data. */
   msg.msg_iov = &iov;
@@ -170,9 +170,6 @@ send_stdout (int s)
   buf[0] = 0;
   iov.iov_base = buf;
   iov.iov_len = sizeof buf;
-
-  msg.msg_name = NULL;
-  msg.msg_namelen = 0;
 
   msg.msg_control = control_un.control;
   msg.msg_controllen = sizeof (control_un.control);
@@ -283,12 +280,12 @@ rc_listen (void)
       xdrstdio_create (&xdr, fp, XDR_DECODE);
 
       if (!xdr_guestfish_hello (&xdr, &hello)) {
-        fprintf (stderr, _("guestfish: protocol error: could not read 'hello' message\n"));
+        fprintf (stderr, _("guestfish: protocol error: could not read ‘hello’ message\n"));
         goto error;
       }
 
       if (STRNEQ (hello.vers, PACKAGE_VERSION)) {
-        fprintf (stderr, _("guestfish: protocol error: version mismatch, server version '%s' does not match client version '%s'.  The two versions must match exactly.\n"),
+        fprintf (stderr, _("guestfish: protocol error: version mismatch, server version ‘%s’ does not match client version ‘%s’.  The two versions must match exactly.\n"),
                  PACKAGE_VERSION,
                  hello.vers);
         xdr_free ((xdrproc_t) xdr_guestfish_hello, (char *) &hello);

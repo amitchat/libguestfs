@@ -53,6 +53,8 @@ int keys_from_stdin = 0;
 int echo_keys = 0;
 const char *libvirt_uri = NULL;
 int inspector = 1;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 static const char *xpath = NULL;
 static int inspect_apps = 1;
 static int inspect_icon = 1;
@@ -70,7 +72,7 @@ static void __attribute__((noreturn))
 usage (int status)
 {
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n"),
              getprogname ());
   else {
     printf (_("%s: display information about a virtual machine\n"
@@ -237,7 +239,7 @@ main (int argc, char *argv[])
 
   /* Must be no extra arguments on the command line. */
   if (optind != argc) {
-    fprintf (stderr, _("%s: error: extra argument '%s' on command line.\n"
+    fprintf (stderr, _("%s: error: extra argument ‘%s’ on command line.\n"
              "Make sure to specify the argument for --format "
              "like '--format=%s'.\n"),
              getprogname (), argv[optind], argv[optind]);

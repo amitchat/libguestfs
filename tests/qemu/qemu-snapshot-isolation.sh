@@ -22,7 +22,8 @@
 
 set -e
 
-. $srcdir/../../test-data/guestfs-hashsums.sh
+$TEST_FUNCTIONS
+skip_if_skipped
 
 # UML backend doesn't support qcow2 format.
 supports_qcow2=yes
@@ -86,7 +87,7 @@ function serious_error
     echo
     echo
     echo "***** SERIOUS ERROR *****"
-    echo "qemu's snapshot isolation does not appear to be working."
+    echo "qemu’s snapshot isolation does not appear to be working."
     echo "Running libguestfs could cause disk corruption on live guests."
     echo
     echo "DO NOT USE libguestfs before you have resolved this problem."

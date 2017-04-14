@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,11 @@ type source = {
   s_orig_name : string;
   s_memory : int64;
   s_vcpu : int;
+  s_cpu_vendor : string option;
+  s_cpu_model : string option;
+  s_cpu_sockets : int option;
+  s_cpu_cores : int option;
+  s_cpu_threads : int option;
   s_features : string list;
   s_firmware : source_firmware;
   s_display : source_display option;
@@ -85,7 +90,7 @@ and s_display_listen =
   | LNoListen
   | LAddress of string
   | LNetwork of string
-  | LSocket of string
+  | LSocket of string option
   | LNone
 
 and source_video = Source_other_video of string |
@@ -102,6 +107,9 @@ let rec string_of_source s =
 hypervisor type: %s
          memory: %Ld (bytes)
        nr vCPUs: %d
+     CPU vendor: %s
+      CPU model: %s
+   CPU topology: sockets: %s cores/socket: %s threads/core: %s
    CPU features: %s
        firmware: %s
         display: %s
@@ -118,6 +126,11 @@ NICs:
     (string_of_source_hypervisor s.s_hypervisor)
     s.s_memory
     s.s_vcpu
+    (match s.s_cpu_vendor with None -> "" | Some v -> v)
+    (match s.s_cpu_model with None -> "" | Some v -> v)
+    (match s.s_cpu_sockets with None -> "-" | Some v -> string_of_int v)
+    (match s.s_cpu_cores with None -> "-" | Some v -> string_of_int v)
+    (match s.s_cpu_threads with None -> "-" | Some v -> string_of_int v)
     (String.concat "," s.s_features)
     (string_of_source_firmware s.s_firmware)
     (match s.s_display with
@@ -232,7 +245,8 @@ and string_of_source_display { s_display_type = typ;
     | LNoListen -> ""
     | LAddress a -> sprintf " listening on address %s" a
     | LNetwork n -> sprintf " listening on network %s" n
-    | LSocket s -> sprintf " listening on Unix domain socket %s" s
+    | LSocket (Some s) -> sprintf " listening on Unix domain socket %s" s
+    | LSocket None -> sprintf " listening on automatically created Unix domain socket"
     | LNone -> " listening on private fd"
     )
 
@@ -324,6 +338,10 @@ type inspect = {
   i_apps : Guestfs.application2 list;
   i_apps_map : Guestfs.application2 list StringMap.t;
   i_firmware : i_firmware;
+  i_windows_systemroot : string;
+  i_windows_software_hive : string;
+  i_windows_system_hive : string;
+  i_windows_current_control_set : string;
 }
 
 let string_of_inspect inspect =
@@ -339,6 +357,10 @@ i_package_management = %s
 i_product_name = %s
 i_product_variant = %s
 i_firmware = %s
+i_windows_systemroot = %s
+i_windows_software_hive = %s
+i_windows_system_hive = %s
+i_windows_current_control_set = %s
 " inspect.i_root
   inspect.i_type
   inspect.i_distro
@@ -352,6 +374,10 @@ i_firmware = %s
   (match inspect.i_firmware with
    | I_BIOS -> "BIOS"
    | I_UEFI devices -> sprintf "UEFI [%s]" (String.concat ", " devices))
+  inspect.i_windows_systemroot
+  inspect.i_windows_software_hive
+  inspect.i_windows_system_hive
+  inspect.i_windows_current_control_set
 
 type mpstat = {
   mp_dev : string;
@@ -370,6 +396,9 @@ type guestcaps = {
   gcaps_block_bus : guestcaps_block_type;
   gcaps_net_bus : guestcaps_net_type;
   gcaps_video : guestcaps_video_type;
+  gcaps_virtio_rng : bool;
+  gcaps_virtio_balloon : bool;
+  gcaps_isa_pvpanic : bool;
   gcaps_arch : string;
   gcaps_acpi : bool;
 }
@@ -474,4 +503,8 @@ class virtual output = object
   method disk_create = (open_guestfs ())#disk_create
   method virtual create_metadata : source -> target list -> target_buses -> guestcaps -> inspect -> target_firmware -> unit
   method keep_serial_console = true
+  method install_rhev_apt = false
 end
+
+type output_settings = < keep_serial_console : bool;
+                         install_rhev_apt : bool >

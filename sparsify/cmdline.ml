@@ -1,5 +1,5 @@
 (* virt-sparsify
- * Copyright (C) 2011-2016 Red Hat Inc.
+ * Copyright (C) 2011-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,7 +51,7 @@ let parse_cmdline () =
     | "warn" | "warning" | "w" -> check_tmpdir := `Warn
     | "fail" | "f" | "error" -> check_tmpdir := `Fail
     | str ->
-      error (f_"--check-tmpdir: unknown argument `%s'") str
+      error (f_"--check-tmpdir: unknown argument ‘%s’") str
   in
 
   let compress = ref false in
@@ -146,7 +146,7 @@ read the man page virt-sparsify(1).
 
       (* Check the output is not a char special (RHBZ#1056290). *)
       if is_char_device outdisk then
-        error (f_"output '%s' cannot be a character device, it must be a regular file")
+        error (f_"output ‘%s’ cannot be a character device, it must be a regular file")
               outdisk;
 
       indisk,
