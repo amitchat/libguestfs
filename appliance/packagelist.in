@@ -37,7 +37,8 @@ ifelse(REDHAT,1,
   iputils
   kernel
   libcap
-  libldm               dnl only Fedora for now, others later
+  libldm
+  libtirpc
   nilfs-utils
   ntfsprogs
   ntfs-3g
@@ -74,6 +75,7 @@ dnl iproute has been renamed to iproute2
   iputils-arping
   iputils-tracepath
   isc-dhcp-client
+  ldmtool
   libaugeas0
   libc-bin
   libcap2
@@ -82,6 +84,7 @@ dnl iproute has been renamed to iproute2
   libsystemd0
   libsystemd-id128-0
   libsystemd-journal0
+  libtirpc1
   libyajl2
   linux-image
   dnl syslinux 'suggests' mtools, but in reality it's a hard dependency:
@@ -102,6 +105,7 @@ dnl iproute has been renamed to iproute2
 ifelse(ARCHLINUX,1,
   augeas
   cdrkit
+  cdrtools
   cryptsetup
   dhcpcd
   gptfdisk
@@ -110,13 +114,14 @@ ifelse(ARCHLINUX,1,
   iproute2
   iputils
   libcap
+  libtirpc
   linux
   lrzip
   dnl syslinux has mtools as optional dependency, but in reality it's
   dnl a hard one:
   mtools
+  multipath-tools  dnl for kpartx
   nilfs-utils
-  ntfsprogs
   ntfs-3g
   pcre
   reiserfsprogs
@@ -124,7 +129,6 @@ ifelse(ARCHLINUX,1,
   vim
   xz
   yajl
-  zfs-fuse
 )
 
 ifelse(SUSE,1,
@@ -139,16 +143,19 @@ ifelse(SUSE,1,
   glibc-locale
   gptfdisk
   hivex
+  initviocons
   iproute2
   iputils
   libcap2
   libhivex0
   libselinux1
+  libtirpc3
   libyajl2
   mkisofs
   ntfsprogs
   ntfs-3g
   reiserfs
+  squashfs
   systemd
   vim
   xz
@@ -165,6 +172,7 @@ ifelse(FRUGALWARE,1,
   iputils
   kernel
   libcap
+  libtirpc
   ntfsprogs
   ntfs-3g
   openssh
@@ -194,6 +202,8 @@ ifelse(MAGEIA,1,
   iproute2
   iputils
   libcap
+  libldm
+  libtirpc
   libyajl
   dnl syslinux uses mtools without depending on it
   mtools
@@ -250,6 +260,7 @@ rsync
 scrub
 sed
 sleuthkit
+squashfs-tools
 strace
 syslinux
 tar

@@ -20,6 +20,7 @@
 
 open Printf
 
+open Common_utils
 open Types
 open Utils
 open Pr
@@ -190,7 +191,7 @@ let () =
       failwithf "%s: errno string does not begin with letter 'E' (%s)" file str;
     for i = 0 to len-1 do
       let c = str.[i] in
-      if Char.uppercase c <> c then
+      if Char.uppercase_ascii c <> c then
         failwithf "%s: errno string is not all uppercase (%s)" file str
     done
   in
@@ -228,9 +229,8 @@ extern const char *guestfs_int_errno_to_string (int errnum);
  */
 extern int guestfs_int_string_to_errno (const char *errnostr);
 
-/* Private structure and function used by the perfect hash implementation. */
+/* Private structure used by the perfect hash implementation. */
 struct errnostring_entry { char *name; int errnum; };
-extern const struct errnostring_entry *guestfs_int_string_to_errno_lookup (register const char *str, register unsigned int len);
 
 #endif /* GUESTFS_ERRNOSTRING_H_ */
 "
@@ -275,17 +275,6 @@ guestfs_int_errno_to_string (int errnum)
     return \"EINVAL\";
   else
     return errno_to_string[errnum];
-}
-
-int
-guestfs_int_string_to_errno (const char *errnostr)
-{
-  const struct errnostring_entry *v =
-    guestfs_int_string_to_errno_lookup (errnostr, strlen (errnostr));
-  if (v /* not necessary to check v->name != NULL here */)
-    return v->errnum;
-  else
-    return EINVAL;
 }
 "
 
@@ -336,4 +325,19 @@ struct errnostring_entry;
   List.iter (
     fun e ->
       pr "%s, %s\n" e e
-  ) errnos
+  ) errnos;
+
+  pr "\
+%%%%
+
+int
+guestfs_int_string_to_errno (const char *errnostr)
+{
+  const struct errnostring_entry *v =
+    guestfs_int_string_to_errno_lookup (errnostr, strlen (errnostr));
+  if (v /* not necessary to check v->name != NULL here */)
+    return v->errnum;
+  else
+    return EINVAL;
+}
+"

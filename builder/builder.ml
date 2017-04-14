@@ -1,5 +1,5 @@
 (* virt-builder
- * Copyright (C) 2013-2016 Red Hat Inc.
+ * Copyright (C) 2013-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@ open Common_gettext.Gettext
 module G = Guestfs
 
 open Common_utils
+open Unix_utils
 open Password
 open Planner
 open Utils
@@ -95,7 +96,7 @@ let selected_cli_item cmdline index =
         name = arg && cmdline.arch = normalize_arch a
     ) index
     with Not_found ->
-      error (f_"cannot find os-version '%s' with architecture '%s'.\nUse --list to list available guest types.")
+      error (f_"cannot find os-version ‘%s’ with architecture ‘%s’.\nUse --list to list available guest types.")
         arg cmdline.arch in
   item
 
@@ -147,12 +148,10 @@ let main () =
   (* Check that gpg is installed.  Optional as long as the user
    * disables all signature checks.
    *)
-  let cmd = sprintf "%s --help >/dev/null 2>&1" cmdline.gpg in
-  if shell_command cmd <> 0 then (
-    if cmdline.check_signature then
-      error (f_"gpg is not installed (or does not work)\nYou should install gpg, or use --gpg option, or use --no-check-signature.")
-    else if verbose () then
-      warning (f_"gpg program is not available")
+  if cmdline.check_signature then (
+    let cmd = sprintf "%s --help >/dev/null 2>&1" cmdline.gpg in
+    if cmdline.gpg = "" || shell_command cmd <> 0 then
+      error (f_"no GNU Privacy Guard (GnuPG, gpg) binary was found.\n\nEither gpg v1 or v2 can be installed to check signatures.  Virt-builder looks for a binary called either ‘gpg2’ or ‘gpg‘ on the $PATH.  You can also specify a binary using the ‘--gpg’ option.  If you don't want to check signatures, use ’--no-check-signature’ but note that this may make you vulnerable to Man-In-The-Middle attacks.")
   );
 
   (* Check that curl works. *)
@@ -177,8 +176,15 @@ let main () =
         None
   in
 
+  (* Create a single temporary directory for all the small-or-so
+   * temporary files that Downloader, Sigchecker, etc, are going
+   * create.
+   *)
+  let tmpdir = Mkdtemp.temp_dir "virt-builder." "" in
+  rmdir_on_exit tmpdir;
+
   (* Download the sources. *)
-  let downloader = Downloader.create ~curl:cmdline.curl ~cache in
+  let downloader = Downloader.create ~curl:cmdline.curl ~cache ~tmpdir in
   let repos = Sources.read_sources () in
   let sources = List.map (
     fun (source, fingerprint) ->
@@ -197,7 +203,8 @@ let main () =
           let sigchecker =
             Sigchecker.create ~gpg:cmdline.gpg
                               ~check_signature:cmdline.check_signature
-                              ~gpgkey:source.Sources.gpgkey in
+                              ~gpgkey:source.Sources.gpgkey
+                              ~tmpdir in
           match source.Sources.format with
           | Sources.FormatNative ->
             Index_parser.get_index ~downloader ~sigchecker source
@@ -309,7 +316,7 @@ let main () =
     | { Index.checksums = Some csums } ->
       (try Checksums.verify_checksums csums template
       with Checksums.Mismatched_checksum (csum, csum_actual) ->
-        error (f_"%s checksum of template did not match the expected checksum!\n  found checksum: %s\n  expected checksum: %s\nTry:\n - Use the '-v' option and look for earlier error messages.\n - Delete the cache: virt-builder --delete-cache\n - Check no one has tampered with the website or your network!")
+        error (f_"%s checksum of template did not match the expected checksum!\n  found checksum: %s\n  expected checksum: %s\nTry:\n - Use the ‘-v’ option and look for earlier error messages.\n - Delete the cache: virt-builder --delete-cache\n - Check no one has tampered with the website or your network!")
           (Checksums.string_of_csum_t csum) csum_actual (Checksums.string_of_csum csum)
       )
 

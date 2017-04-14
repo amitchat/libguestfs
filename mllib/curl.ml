@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,11 +20,10 @@ open Printf
 
 open Common_utils
 
-let quote = Filename.quote
-
 type t = {
   curl : string;
   args : args;
+  tmpdir : string option;
 }
 and args = (string * string option) list
 
@@ -40,12 +39,13 @@ let args_of_proxy = function
   | SystemProxy ->     []
   | ForcedProxy url -> [ "proxy", Some url; "noproxy", Some "" ]
 
-let create ?(curl = "curl") ?(proxy = SystemProxy) args =
+let create ?(curl = "curl") ?(proxy = SystemProxy) ?tmpdir args =
   let args = safe_args @ args_of_proxy proxy @ args in
-  { curl = curl; args = args }
+  { curl = curl; args = args; tmpdir = tmpdir }
 
-let run { curl = curl; args = args } =
-  let config_file, chan = Filename.open_temp_file "guestfscurl" ".conf" in
+let run { curl = curl; args = args; tmpdir = tmpdir } =
+  let config_file, chan = Filename.open_temp_file ?temp_dir:tmpdir
+    "guestfscurl" ".conf" in
   List.iter (
     function
     | name, None -> fprintf chan "%s\n" name

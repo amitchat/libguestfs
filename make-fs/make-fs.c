@@ -1,5 +1,5 @@
 /* virt-make-fs
- * Copyright (C) 2010-2016 Red Hat Inc.
+ * Copyright (C) 2010-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,6 +48,8 @@ const char *libvirt_uri;
 int live;
 int read_only;
 int verbose;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 
 static const char *format = "raw", *label = NULL,
   *partition = NULL, *size_str = NULL, *type = "ext2";
@@ -74,11 +76,11 @@ static void __attribute__((noreturn))
 usage (int status)
 {
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n"),
              getprogname ());
   else {
     printf (_("%s: make a filesystem from a tar archive or files\n"
-              "Copyright (C) 2010-2016 Red Hat Inc.\n"
+              "Copyright (C) 2010-2017 Red Hat Inc.\n"
               "Usage:\n"
               "  %s [--options] input.tar output.img\n"
               "  %s [--options] input.tar.gz output.img\n"
@@ -441,7 +443,7 @@ estimate_input (const char *input, uint64_t *estimate_rtn, char **ifmt_rtn)
     }
 
     if (sscanf (line, "%" SCNu64, estimate_rtn) != 1) {
-      fprintf (stderr, _("%s: cannot parse the output of 'du' command: %s\n"),
+      fprintf (stderr, _("%s: cannot parse the output of ‘du’ command: %s\n"),
                getprogname (), line);
       return -1;
     }
@@ -630,7 +632,7 @@ parse_size (const char *str, uint64_t estimate, uint64_t *size_rtn)
   xerr = xstrtoull (str, NULL, 0, &size, "0kKMGTPEZY");
   if (xerr != LONGINT_OK) {
     fprintf (stderr,
-             _("%s: %s: invalid size parameter '%s' (%s returned %u)\n"),
+             _("%s: %s: invalid size parameter ‘%s’ (%s returned %u)\n"),
              getprogname (), "parse_size", str, "xstrtoull", xerr);
     return -1;
   }

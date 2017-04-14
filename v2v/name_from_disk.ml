@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@ let name_from_disk disk =
   (* Remove the extension (or suffix), only if it's one usually
    * used for disk images. *)
   let suffixes = [
-    ".img"; ".ova"; ".qcow2"; ".raw"; ".vmdk";
+    ".img"; ".ova"; ".qcow2"; ".raw"; ".vmdk"; ".vmx";
     "-sda";
   ] in
   let rec loop = function

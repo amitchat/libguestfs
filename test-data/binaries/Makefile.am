@@ -1,5 +1,5 @@
 # libguestfs test images
-# Copyright (C) 2009-2016 Red Hat Inc.
+# Copyright (C) 2009-2017 Red Hat Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@ EXTRA_DIST = \
 	bin-ppc64-dynamic \
 	bin-ppc64le-dynamic \
 	bin-riscv64-dynamic \
+	bin-s390x-dynamic \
 	bin-sparc-dynamic \
 	bin-win32.exe \
 	bin-win64.exe \
@@ -39,6 +40,7 @@ EXTRA_DIST = \
 	lib-ppc64le.so \
 	lib-mipsel.so \
 	lib-riscv64.so \
+	lib-s390x.so \
 	lib-sparc.so \
 	lib-win32.dll \
 	lib-win64.dll \

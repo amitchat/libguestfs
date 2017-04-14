@@ -1,5 +1,5 @@
 (* virt-resize
- * Copyright (C) 2010-2016 Red Hat Inc.
+ * Copyright (C) 2010-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@ open Printf
 
 open Common_utils
 open Common_gettext.Gettext
+open Unix_utils
 open Getopt.OptionName
 
 module G = Guestfs
@@ -60,6 +61,7 @@ and partition_content =
   | ContentPV of int64           (* physical volume (size of PV) *)
   | ContentFS of string * int64  (* mountable filesystem (FS type, FS size) *)
   | ContentExtendedPartition     (* MBR extended partition *)
+  | ContentSwap                  (* Swap partition *)
 and partition_operation =
   | OpCopy                       (* copy it as-is, no resizing *)
   | OpIgnore                     (* ignore it (create on target, but don't
@@ -104,11 +106,13 @@ and string_of_partition_content = function
   | ContentPV sz -> sprintf "LVM PV (%Ld bytes)" sz
   | ContentFS (fs, sz) -> sprintf "filesystem %s (%Ld bytes)" fs sz
   | ContentExtendedPartition -> "extended partition"
+  | ContentSwap -> "swap"
 and string_of_partition_content_no_size = function
   | ContentUnknown -> "unknown data"
   | ContentPV _ -> "LVM PV"
   | ContentFS (fs, _) -> sprintf "filesystem %s" fs
   | ContentExtendedPartition -> "extended partition"
+  | ContentSwap -> "swap"
 
 (* Data structure describing LVs on the source disk.  This is only
  * used if the user gave the --lv-expand option.
@@ -130,6 +134,7 @@ let debug_logvol lv =
 
 type expand_content_method =
   | PVResize | Resize2fs | NTFSResize | BtrfsFilesystemResize | XFSGrowFS
+  | Mkswap
 
 let string_of_expand_content_method = function
   | PVResize -> s_"pvresize"
@@ -137,6 +142,7 @@ let string_of_expand_content_method = function
   | NTFSResize -> s_"ntfsresize"
   | BtrfsFilesystemResize -> s_"btrfs-filesystem-resize"
   | XFSGrowFS -> s_"xfs_growfs"
+  | Mkswap -> s_"mkswap"
 
 type unknown_filesystems_mode =
   | UnknownFsIgnore
@@ -186,17 +192,17 @@ let main () =
     let argspec = [
       [ L"align-first" ], Getopt.Set_string (s_"never|always|auto", align_first), s_"Align first partition (default: auto)";
       [ L"alignment" ], Getopt.Set_int (s_"sectors", alignment),   s_"Set partition alignment (default: 128 sectors)";
-      [ L"no-copy-boot-loader" ], Getopt.Clear copy_boot_loader, s_"Don't copy boot loader";
+      [ L"no-copy-boot-loader" ], Getopt.Clear copy_boot_loader, s_"Don’t copy boot loader";
       [ S 'd'; L"debug" ],        Getopt.Unit set_verbose,      s_"Enable debugging messages";
       [ L"delete" ],  Getopt.String (s_"part", add deletes),  s_"Delete partition";
       [ L"expand" ],  Getopt.String (s_"part", set_expand),     s_"Expand partition";
-      [ L"no-expand-content" ], Getopt.Clear expand_content, s_"Don't expand content";
-      [ L"no-extra-partition" ], Getopt.Clear extra_partition, s_"Don't create extra partition";
+      [ L"no-expand-content" ], Getopt.Clear expand_content, s_"Don’t expand content";
+      [ L"no-extra-partition" ], Getopt.Clear extra_partition, s_"Don’t create extra partition";
       [ L"format" ],  Getopt.Set_string (s_"format", format),     s_"Format of input disk";
       [ L"ignore" ],  Getopt.String (s_"part", add ignores),  s_"Ignore partition";
       [ L"lv-expand"; L"LV-expand"; L"lvexpand"; L"LVexpand" ], Getopt.String (s_"lv", add lv_expands), s_"Expand logical volume";
       [ L"machine-readable" ], Getopt.Set machine_readable, s_"Make output machine readable";
-      [ S 'n'; L"dry-run"; L"dryrun" ],        Getopt.Set dryrun,            s_"Don't perform changes";
+      [ S 'n'; L"dry-run"; L"dryrun" ],        Getopt.Set dryrun,            s_"Don’t perform changes";
       [ L"ntfsresize-force" ], Getopt.Set ntfsresize_force, s_"Force ntfsresize";
       [ L"output-format" ], Getopt.Set_string (s_"format", output_format), s_"Format of output disk";
       [ L"resize" ],  Getopt.String (s_"part=size", add resizes),  s_"Resize partition";
@@ -307,8 +313,15 @@ read the man page virt-resize(1).
     let infile =
       try (infile, URI.parse_uri infile)
       with Invalid_argument "URI.parse_uri" ->
-        error (f_"error parsing URI '%s'. Look for error messages printed above.")
+        error (f_"error parsing URI ‘%s’. Look for error messages printed above.")
           infile in
+
+    (* outfile can be a URI. *)
+    let outfile =
+      try (outfile, URI.parse_uri outfile)
+      with Invalid_argument "URI.parse_uri" ->
+        error (f_"error parsing URI ‘%s’. Look for error messages printed above.")
+          outfile in
 
     infile, outfile, align_first, alignment, copy_boot_loader,
     deletes,
@@ -321,16 +334,24 @@ read the man page virt-resize(1).
   let btrfs_available = ref true in
   let xfs_available = ref true in
 
+  (* Add a drive to an handle using the elements of the URI,
+   * and few additional parameters.
+   *)
+  let add_drive_uri (g : Guestfs.guestfs) ?format ?readonly ?cachemode
+                    { URI.path = path; protocol = protocol;
+                      server = server; username = username;
+                      password = password } =
+    g#add_drive ?format ?readonly ?cachemode
+      ~protocol ?server ?username ?secret:password path
+  in
+
   (* Add in and out disks to the handle and launch. *)
   let connect_both_disks () =
     let g = open_guestfs () in
-    let _, { URI.path = path; protocol = protocol;
-             server = server; username = username;
-             password = password } = infile in
-    g#add_drive ?format ~readonly:true ~protocol ?server ?username ?secret:password path;
+    add_drive_uri g ?format (snd infile);
     (* The output disk is being created, so use cache=unsafe here. *)
-    g#add_drive ?format:output_format ~readonly:false ~cachemode:"unsafe"
-      outfile;
+    add_drive_uri g ?format:output_format ~readonly:false ~cachemode:"unsafe"
+      (snd outfile);
     if not (quiet ()) then Progress.set_up_progress_bar ~machine_readable g;
     g#launch ();
 
@@ -363,7 +384,7 @@ read the man page virt-resize(1).
     let insize = g#blockdev_getsize64 "/dev/sda" in
     let outsize = g#blockdev_getsize64 "/dev/sdb" in
     debug "%s size %Ld bytes" (fst infile) insize;
-    debug "%s size %Ld bytes" outfile outsize;
+    debug "%s size %Ld bytes" (fst outfile) outsize;
     sectsize, insize, outsize in
 
   let max_bootloader =
@@ -385,7 +406,7 @@ read the man page virt-resize(1).
       (fst infile) insize;
   if outsize < Int64.of_int max_bootloader then
     error (f_"%s: file is too small to be a disk image (%Ld bytes)")
-      outfile outsize;
+      (fst outfile) outsize;
 
   (* Get the source partition type. *)
   let parttype, parttype_string =
@@ -414,6 +435,8 @@ read the man page virt-resize(1).
         let fs = g#vfs_type dev in
         if fs = "unknown" then
           ContentUnknown
+        else if fs = "swap" then
+          ContentSwap
         else if fs = "LVM2_member" then (
           let rec loop = function
             | [] ->
@@ -531,7 +554,7 @@ read the man page virt-resize(1).
         assert (
           match typ with
           | ContentPV _ | ContentExtendedPartition -> false
-          | ContentUnknown | ContentFS _ -> true
+          | ContentUnknown | ContentFS _ | ContentSwap -> true
         );
 
         { lv_name = name; lv_type = typ; lv_operation = LVOpNone }
@@ -558,6 +581,7 @@ read the man page virt-resize(1).
       | ContentFS (("xfs"), _) when !xfs_available -> true
       | ContentFS _ -> false
       | ContentExtendedPartition -> false
+      | ContentSwap -> true
     else
       fun _ -> false
 
@@ -572,6 +596,7 @@ read the man page virt-resize(1).
       | ContentFS (("xfs"), _) when !xfs_available -> XFSGrowFS
       | ContentFS _ -> assert false
       | ContentExtendedPartition -> assert false
+      | ContentSwap -> Mkswap
     else
       fun _ -> assert false
   in
@@ -595,15 +620,15 @@ read the man page virt-resize(1).
       let partition =
         try Hashtbl.find hash name
         with Not_found ->
-          error (f_"%s: partition not found in the source disk image (this error came from '%s' option on the command line).  Try running this command: virt-filesystems --partitions --long -a %s")
+          error (f_"%s: partition not found in the source disk image (this error came from ‘%s’ option on the command line).  Try running this command: virt-filesystems --partitions --long -a %s")
           name option (fst infile) in
 
       if partition.p_operation = OpIgnore then
-        error (f_"%s: partition already ignored, you cannot use it in '%s' option")
+        error (f_"%s: partition already ignored, you cannot use it in ‘%s’ option")
           name option;
 
       if partition.p_operation = OpDelete then
-        error (f_"%s: partition already deleted, you cannot use it in '%s' option")
+        error (f_"%s: partition already deleted, you cannot use it in ‘%s’ option")
           name option;
 
       partition in
@@ -652,19 +677,20 @@ read the man page virt-resize(1).
          *)
         match p.p_type with
         | ContentUnknown ->
-          error (f_"%s: This partition has unknown content which might be damaged by shrinking it.  If you want to shrink this partition, you need to use the '--resize-force' option, but that could destroy any data on this partition.  (This error came from '%s' option on the command line.)")
+          error (f_"%s: This partition has unknown content which might be damaged by shrinking it.  If you want to shrink this partition, you need to use the ‘--resize-force’ option, but that could destroy any data on this partition.  (This error came from ‘%s’ option on the command line.)")
             name option
         | ContentPV size when size > newsize ->
-          error (f_"%s: This partition contains an LVM physical volume which will be damaged by shrinking it below %Ld bytes (user asked to shrink it to %Ld bytes).  If you want to shrink this partition, you need to use the '--resize-force' option, but that could destroy any data on this partition.  (This error came from '%s' option on the command line.)")
+          error (f_"%s: This partition contains an LVM physical volume which will be damaged by shrinking it below %Ld bytes (user asked to shrink it to %Ld bytes).  If you want to shrink this partition, you need to use the ‘--resize-force’ option, but that could destroy any data on this partition.  (This error came from ‘%s‘ option on the command line.)")
             name size newsize option
         | ContentPV _ -> ()
         | ContentFS (fstype, size) when size > newsize ->
-          error (f_"%s: This partition contains a %s filesystem which will be damaged by shrinking it below %Ld bytes (user asked to shrink it to %Ld bytes).  If you want to shrink this partition, you need to use the '--resize-force' option, but that could destroy any data on this partition.  (This error came from '%s' option on the command line.)")
+          error (f_"%s: This partition contains a %s filesystem which will be damaged by shrinking it below %Ld bytes (user asked to shrink it to %Ld bytes).  If you want to shrink this partition, you need to use the ‘--resize-force’ option, but that could destroy any data on this partition.  (This error came from ‘%s’ option on the command line.)")
             name fstype size newsize option
         | ContentFS _ -> ()
         | ContentExtendedPartition ->
-          error (f_"%s: This extended partition contains logical partitions which might be damaged by shrinking it.  If you want to shrink this partition, you need to use the '--resize-force' option, but that could destroy logical partitions within this partition.  (This error came from '%s' option on the command line.)")
+          error (f_"%s: This extended partition contains logical partitions which might be damaged by shrinking it.  If you want to shrink this partition, you need to use the ‘--resize-force’ option, but that could destroy logical partitions within this partition.  (This error came from ‘%s’ option on the command line.)")
             name option
+        | ContentSwap -> ()
       );
 
       p.p_operation <- OpResize newsize
@@ -681,7 +707,7 @@ read the man page virt-resize(1).
         if n == 0 then raise Not_found;
         String.sub arg 0 i, String.sub arg (i+1) n
       with Not_found ->
-        error (f_"%s: missing size field in '%s' option") arg option in
+        error (f_"%s: missing size field in ‘%s’ option") arg option in
 
     let p = find_partition ~option dev in
 
@@ -776,7 +802,7 @@ read the man page virt-resize(1).
      | None -> ()
      | Some dev ->
          if surplus > 0L then
-           error (f_"You cannot use --shrink when there is no deficit (see 'deficit' in the virt-resize(1) man page).");
+           error (f_"You cannot use --shrink when there is no deficit (see ‘deficit’ in the virt-resize(1) man page).");
 
          let option = "--shrink" in
          let p = find_partition ~option dev in
@@ -808,7 +834,7 @@ read the man page virt-resize(1).
       let lv =
         try Hashtbl.find hash name
         with Not_found ->
-          error (f_"%s: logical volume not found in the source disk image (this error came from '--lv-expand' option on the command line).  Try running this command: virt-filesystems --logical-volumes --long -a %s")
+          error (f_"%s: logical volume not found in the source disk image (this error came from ‘--lv-expand’ option on the command line).  Try running this command: virt-filesystems --logical-volumes --long -a %s")
             name (fst infile) in
       lv.lv_operation <- LVOpExpand
   ) lv_expands;
@@ -831,7 +857,8 @@ read the man page virt-resize(1).
             (match p.p_type with
             | ContentUnknown
             | ContentPV _
-            | ContentExtendedPartition -> ()
+            | ContentExtendedPartition
+            | ContentSwap -> ()
             | ContentFS (fs, _) ->
               error (f_"unknown/unavailable method for expanding the %s filesystem on %s")
                 fs p.p_name
@@ -848,7 +875,8 @@ read the man page virt-resize(1).
             (match lv.lv_type with
             | ContentUnknown
             | ContentPV _
-            | ContentExtendedPartition -> ()
+            | ContentExtendedPartition
+            | ContentSwap -> ()
             | ContentFS (fs, _) ->
               error (f_"unknown/unavailable method for expanding the %s filesystem on %s")
                 fs lv.lv_name;
@@ -877,7 +905,7 @@ read the man page virt-resize(1).
           sprintf (f_"%s: This partition will be resized from %s to %s.")
             p.p_name (human_size p.p_part.G.part_size) (human_size newsize) ^
             if can_expand_content p.p_type then (
-              sprintf (f_"  The %s on %s will be expanded using the '%s' method.")
+              sprintf (f_"  The %s on %s will be expanded using the ‘%s’ method.")
                 (string_of_partition_content_no_size p.p_type)
                 p.p_name
                 (string_of_expand_content_method
@@ -886,7 +914,8 @@ read the man page virt-resize(1).
               (match p.p_type with
               | ContentUnknown
               | ContentPV _
-              | ContentExtendedPartition -> ()
+              | ContentExtendedPartition
+              | ContentSwap -> ()
               | ContentFS (fs, _) ->
                 warning (f_"unknown/unavailable method for expanding the %s filesystem on %s")
                   fs p.p_name;
@@ -907,7 +936,7 @@ read the man page virt-resize(1).
               sprintf (f_"%s: This logical volume will be expanded to maximum size.")
                 name ^
               if can_expand_content lv.lv_type then (
-                sprintf (f_"  The %s on %s will be expanded using the '%s' method.")
+                sprintf (f_"  The %s on %s will be expanded using the ‘%s’ method.")
                   (string_of_partition_content_no_size lv.lv_type)
                   name
                   (string_of_expand_content_method
@@ -916,7 +945,8 @@ read the man page virt-resize(1).
                 (match lv.lv_type with
                 | ContentUnknown
                 | ContentPV _
-                | ContentExtendedPartition -> ()
+                | ContentExtendedPartition
+                | ContentSwap -> ()
                 | ContentFS (fs, _) ->
                   warning (f_"unknown/unavailable method for expanding the %s filesystem on %s")
                     fs name;
@@ -969,7 +999,7 @@ read the man page virt-resize(1).
     (* Try hard to initialize the partition table.  This might involve
      * relaunching another handle.
      *)
-    message (f_"Setting up initial partition table on %s") outfile;
+    message (f_"Setting up initial partition table on %s") (fst outfile);
 
     let last_error = ref "" in
     let rec initialize_partition_table g attempts =
@@ -1199,7 +1229,7 @@ read the man page virt-resize(1).
         message (f_"Copying %s") source;
 
         (match p.p_type with
-         | ContentUnknown | ContentPV _ | ContentFS _ ->
+         | ContentUnknown | ContentPV _ | ContentFS _ | ContentSwap ->
            g#copy_device_to_device ~size:copysize ~sparse source target
 
          | ContentExtendedPartition ->
@@ -1255,7 +1285,7 @@ read the man page virt-resize(1).
 
     | { p_type =
         (ContentFS _|ContentUnknown|ContentPV _
-            |ContentExtendedPartition) } :: _
+            |ContentExtendedPartition|ContentSwap) } :: _
     | [] -> ()
   );
 
@@ -1287,8 +1317,8 @@ read the man page virt-resize(1).
 
       let g = open_guestfs () in
       (* The output disk is being created, so use cache=unsafe here. *)
-      g#add_drive ?format:output_format ~readonly:false ~cachemode:"unsafe"
-        outfile;
+      add_drive_uri g ?format:output_format ~readonly:false ~cachemode:"unsafe"
+        (snd outfile);
       if not (quiet ()) then Progress.set_up_progress_bar ~machine_readable g;
       g#launch ();
 
@@ -1312,6 +1342,13 @@ read the man page virt-resize(1).
       | NTFSResize -> g#ntfsresize ~force:ntfsresize_force target
       | BtrfsFilesystemResize -> with_mounted target g#btrfs_filesystem_resize
       | XFSGrowFS -> with_mounted target g#xfs_growfs
+      | Mkswap ->
+        (* Rebuild the swap using the UUID and label of the existing
+         * swap partition.
+         *)
+        let uuid = g#vfs_uuid target in
+        let label = g#vfs_label target in
+        g#mkswap ~uuid ~label target
     in
 
     (* Expand partition content as required. *)
@@ -1322,7 +1359,7 @@ read the man page virt-resize(1).
           let target = sprintf "/dev/sda%d" p.p_target_partnum in
           let meth = expand_content_method p.p_type in
 
-          message (f_"Expanding %s%s using the '%s' method")
+          message (f_"Expanding %s%s using the ‘%s’ method")
             source
             (if source <> target then sprintf " (now %s)" target else "")
             (string_of_expand_content_method meth);
@@ -1341,7 +1378,7 @@ read the man page virt-resize(1).
           let name = lv.lv_name in
           let meth = expand_content_method lv.lv_type in
 
-          message (f_"Expanding %s using the '%s' method")
+          message (f_"Expanding %s using the ‘%s’ method")
             name (string_of_expand_content_method meth);
 
           (* First expand the LV itself to maximum size. *)
@@ -1357,13 +1394,17 @@ read the man page virt-resize(1).
   g#shutdown ();
   g#close ();
 
-  (* Because we used cache=unsafe when writing the output file, the
-   * file might not be committed to disk.  This is a problem if qemu is
-   * immediately used afterwards with cache=none (which uses O_DIRECT
-   * and therefore bypasses the host cache).  In general you should not
-   * use cache=none.
-   *)
-  Fsync.file outfile;
+  (* Try to sync the destination disk only if it is a local file. *)
+  (match outfile with
+  | _, { URI.protocol = (""|"file"); path = path } ->
+    (* Because we used cache=unsafe when writing the output file, the
+     * file might not be committed to disk.  This is a problem if qemu is
+     * immediately used afterwards with cache=none (which uses O_DIRECT
+     * and therefore bypasses the host cache).  In general you should not
+     * use cache=none.
+     *)
+    Fsync.file path
+  | _ -> ());
 
   if not (quiet ()) then (
     print_newline ();

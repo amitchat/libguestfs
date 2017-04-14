@@ -20,6 +20,7 @@
 
 open Printf
 
+open Common_utils
 open Docstrings
 open Pr
 
@@ -220,8 +221,8 @@ See also I<--run>.";
     op_shortdesc = "Add package(s) to install at first boot";
     op_pod_longdesc = "\
 Install the named packages (a comma-separated list).  These are
-installed when the guest first boots using the guest's package manager
-(eg. apt, yum, etc.) and the guest's network connection.
+installed when the guest first boots using the guest’s package manager
+(eg. apt, yum, etc.) and the guest’s network connection.
 
 For an overview on the different ways to install packages, see
 L<virt-builder(1)/INSTALLING PACKAGES>.";
@@ -242,8 +243,8 @@ dotted hostname.domainname (FQDN) if you want.";
     op_shortdesc = "Add package(s) to install";
     op_pod_longdesc = "\
 Install the named packages (a comma-separated list).  These are
-installed during the image build using the guest's package manager
-(eg. apt, yum, etc.) and the host's network connection.
+installed during the image build using the guest’s package manager
+(eg. apt, yum, etc.) and the host’s network connection.
 
 For an overview on the different ways to install packages, see
 L<virt-builder(1)/INSTALLING PACKAGES>.
@@ -464,7 +465,7 @@ This command performs a L<touch(1)>-like operation on C<FILE>.";
     op_shortdesc = "Uninstall package(s)";
     op_pod_longdesc = "\
 Uninstall the named packages (a comma-separated list).  These are
-removed during the image build using the guest's package manager
+removed during the image build using the guest’s package manager
 (eg. apt, yum, etc.).  Dependent packages may also need to be
 uninstalled to satisfy the request.
 
@@ -625,8 +626,6 @@ open Printf
 open Common_utils
 open Common_gettext.Gettext
 open Getopt.OptionName
-
-open Customize_utils
 
 ";
   generate_ops_struct_decl ();
@@ -1039,7 +1038,7 @@ let generate_customize_options_pod () =
           n, sprintf "B<--%s> %s" n v, ld
       ) flags in
   let cmp (arg1, _, _) (arg2, _, _) =
-    compare (String.lowercase arg1) (String.lowercase arg2)
+    compare (String.lowercase_ascii arg1) (String.lowercase_ascii arg2)
   in
   let pod = List.sort cmp pod in
 

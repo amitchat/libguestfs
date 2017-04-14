@@ -1,5 +1,5 @@
 /* libguestfs - the guestfsd daemon
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 #include "guestfs-internal-all.h"
 
 #include "cleanups.h"
+#include "structs-cleanups.h"
 #include "command.h"
 
 /* Mountables */
@@ -141,11 +142,15 @@ extern int parse_btrfsvol (const char *desc, mountable_t *mountable);
 
 extern int prog_exists (const char *prog);
 
+extern void udev_settle_file (const char *file);
+
 extern void udev_settle (void);
 
 extern int random_name (char *template);
 
 extern char *get_random_uuid (void);
+
+extern char *make_exclude_from_file (const char *function, char *const *excludes);
 
 extern int asprintf_nowarn (char **strp, const char *fmt, ...);
 
@@ -254,6 +259,7 @@ extern int64_t ntfs_minimum_size (const char *device);
 
 /*-- in swap.c --*/
 extern int swap_set_uuid (const char *device, const char *uuid);
+extern int swap_set_label (const char *device, const char *label);
 
 /* ordinary daemon functions use these to indicate errors
  * NB: you don't need to prefix the string with the current command,
@@ -338,18 +344,6 @@ is_zero (const char *buffer, size_t size)
 
   return 1;
 }
-
-/* Helper for building up short lists of arguments.  Your code has to
- * define MAX_ARGS to a suitable value.
- */
-#define ADD_ARG(argv,i,v)                                               \
-  do {                                                                  \
-    if ((i) >= MAX_ARGS) {                                              \
-      fprintf (stderr, "%s: %d: internal error: exceeded MAX_ARGS (%zu) when constructing the command line\n", __FILE__, __LINE__, (size_t) MAX_ARGS); \
-      abort ();                                                         \
-    }                                                                   \
-    (argv)[(i)++] = (v);                                                \
-  } while (0)
 
 /* Helper for functions that need a root filesystem mounted.
  * NB. Cannot be used for FileIn functions.

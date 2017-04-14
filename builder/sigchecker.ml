@@ -18,6 +18,7 @@
 
 open Common_gettext.Gettext
 open Common_utils
+open Unix_utils
 
 open Utils
 
@@ -30,18 +31,18 @@ type t = {
   subkeys_fingerprints : string list;
   check_signature : bool;
   gpghome : string;
+  tmpdir : string;
 }
 
 (* Import the specified key file. *)
-let import_keyfile ~gpg ~gpghome ?(trust = true) keyfile =
-  let status_file = Filename.temp_file "vbstat" ".txt" in
-  unlink_on_exit status_file;
+let import_keyfile ~gpg ~gpghome ~tmpdir ?(trust = true) keyfile =
+  let status_file = Filename.temp_file ~temp_dir:tmpdir "vbstat" ".txt" in
   let cmd = sprintf "%s --homedir %s --status-file %s --import %s%s"
     gpg gpghome (quote status_file) (quote keyfile)
     (if verbose () then "" else " >/dev/null 2>&1") in
   let r = shell_command cmd in
   if r <> 0 then
-    error (f_"could not import public key\nUse the '-v' option and look for earlier error messages.");
+    error (f_"could not import public key\nUse the ‘-v’ option and look for earlier error messages.");
   let status = read_whole_file status_file in
   let status = String.nsplit "\n" status in
   let key_id = ref "" in
@@ -60,7 +61,7 @@ let import_keyfile ~gpg ~gpghome ?(trust = true) keyfile =
       (if verbose () then "" else " >/dev/null 2>&1") in
     let r = shell_command cmd in
     if r <> 0 then
-      error (f_"GPG failure: could not trust the imported key\nUse the '-v' option and look for earlier error messages.");
+      error (f_"GPG failure: could not trust the imported key\nUse the ‘-v’ option and look for earlier error messages.");
   );
   let subkeys =
     (* --with-fingerprint is specified twice so gpg outputs the full
@@ -88,10 +89,9 @@ let import_keyfile ~gpg ~gpghome ?(trust = true) keyfile =
     !subkeys in
   !fingerprint, subkeys
 
-let rec create ~gpg ~gpgkey ~check_signature =
+let rec create ~gpg ~gpgkey ~check_signature ~tmpdir =
   (* Create a temporary directory for gnupg. *)
-  let tmpdir = Mkdtemp.temp_dir "vb.gpghome." "" in
-  rmdir_on_exit tmpdir;
+  let gpgtmpdir = Mkdtemp.temp_dir ~base_dir:tmpdir "vb.gpghome." "" in
   (* Make sure we have no check_signature=true with no actual key. *)
   let check_signature, gpgkey =
     match check_signature, gpgkey with
@@ -103,25 +103,24 @@ let rec create ~gpg ~gpgkey ~check_signature =
        * cannot.
        *)
       let cmd = sprintf "%s --homedir %s --list-keys%s"
-        gpg tmpdir (if verbose () then "" else " >/dev/null 2>&1") in
+        gpg gpgtmpdir (if verbose () then "" else " >/dev/null 2>&1") in
       let r = shell_command cmd in
       if r <> 0 then
-        error (f_"GPG failure: could not run GPG the first time\nUse the '-v' option and look for earlier error messages.");
+        error (f_"GPG failure: could not run GPG the first time\nUse the ‘-v’ option and look for earlier error messages.");
       match gpgkey with
       | No_Key ->
         assert false
       | KeyFile kf ->
-        import_keyfile gpg tmpdir kf
+        import_keyfile gpg gpgtmpdir tmpdir kf
       | Fingerprint fp ->
-        let filename = Filename.temp_file "vbpubkey" ".asc" in
-        unlink_on_exit filename;
+        let filename = Filename.temp_file ~temp_dir:tmpdir "vbpubkey" ".asc" in
         let cmd = sprintf "%s --yes --armor --output %s --export %s%s"
           gpg (quote filename) (quote fp)
           (if verbose () then "" else " >/dev/null 2>&1") in
         let r = shell_command cmd in
         if r <> 0 then
-          error (f_"could not export public key\nUse the '-v' option and look for earlier error messages.");
-        import_keyfile gpg tmpdir filename
+          error (f_"could not export public key\nUse the ‘-v’ option and look for earlier error messages.");
+        import_keyfile gpg gpgtmpdir tmpdir filename
     ) else
       "", [] in
   {
@@ -129,7 +128,8 @@ let rec create ~gpg ~gpgkey ~check_signature =
     fingerprint = fingerprint;
     subkeys_fingerprints = subkeys;
     check_signature = check_signature;
-    gpghome = tmpdir;
+    gpghome = gpgtmpdir;
+    tmpdir = tmpdir;
   }
 
 (* Compare two strings of hex digits ignoring whitespace and case. *)
@@ -179,12 +179,10 @@ and verify_and_remove_signature t filename =
   if t.check_signature then (
     (* Copy the input file as temporary file with the .asc extension,
      * so gpg recognises that format. *)
-    let asc_file = Filename.temp_file "vbfile" ".asc" in
-    unlink_on_exit asc_file;
+    let asc_file = Filename.temp_file ~temp_dir:t.tmpdir "vbfile" ".asc" in
     let cmd = [ "cp"; filename; asc_file ] in
     if run_command cmd <> 0 then exit 1;
-    let out_file = Filename.temp_file "vbfile" "" in
-    unlink_on_exit out_file;
+    let out_file = Filename.temp_file ~temp_dir:t.tmpdir "vbfile" "" in
     let args = sprintf "--yes --output %s %s" (quote out_file) (quote filename) in
     do_verify ~verify_only:false t args;
     Some out_file
@@ -192,8 +190,7 @@ and verify_and_remove_signature t filename =
     None
 
 and do_verify ?(verify_only = true) t args =
-  let status_file = Filename.temp_file "vbstat" ".txt" in
-  unlink_on_exit status_file;
+  let status_file = Filename.temp_file ~temp_dir:t.tmpdir "vbstat" ".txt" in
   let cmd =
     sprintf "%s --homedir %s %s%s --status-file %s %s"
         t.gpg t.gpghome
@@ -202,7 +199,7 @@ and do_verify ?(verify_only = true) t args =
         (quote status_file) args in
   let r = shell_command cmd in
   if r <> 0 then
-    error (f_"GPG failure: could not verify digital signature of file\nTry:\n - Use the '-v' option and look for earlier error messages.\n - Delete the cache: virt-builder --delete-cache\n - Check no one has tampered with the website or your network!");
+    error (f_"GPG failure: could not verify digital signature of file\nTry:\n - Use the ‘-v’ option and look for earlier error messages.\n - Delete the cache: virt-builder --delete-cache\n - Check no one has tampered with the website or your network!");
 
   (* Check the fingerprint is who it should be. *)
   let status = read_whole_file status_file in

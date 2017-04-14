@@ -1,5 +1,5 @@
 /* virt-log
- * Copyright (C) 2010-2016 Red Hat Inc.
+ * Copyright (C) 2010-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,6 +51,8 @@ int keys_from_stdin = 0;
 int echo_keys = 0;
 const char *libvirt_uri = NULL;
 int inspector = 1;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 
 #define JOURNAL_DIR "/var/log/journal"
 
@@ -63,11 +65,11 @@ static void __attribute__((noreturn))
 usage (int status)
 {
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n"),
              getprogname ());
   else {
     printf (_("%s: display log files in a virtual machine\n"
-              "Copyright (C) 2010-2016 Red Hat Inc.\n"
+              "Copyright (C) 2010-2017 Red Hat Inc.\n"
               "Usage:\n"
               "  %s [--options] -d domname\n"
               "  %s [--options] -a disk.img [-a disk.img ...]\n"
@@ -188,7 +190,7 @@ main (int argc, char *argv[])
 
   /* User must not specify more arguments on the command line. */
   if (optind != argc) {
-    fprintf (stderr, _("%s: error: extra argument '%s' on command line.\n"
+    fprintf (stderr, _("%s: error: extra argument ‘%s’ on command line.\n"
              "Make sure to specify the argument for --format "
              "like '--format=%s'.\n"),
              getprogname (), argv[optind], argv[optind]);
@@ -425,7 +427,7 @@ do_log_windows_evtx (void)
   int fd, status;
 
   if (system ("evtxdump.py -h >/dev/null 2>&1") != 0) {
-    fprintf (stderr, _("%s: you need to install 'evtxdump.py' (from the python-evtx package)\n"
+    fprintf (stderr, _("%s: you need to install ‘evtxdump.py’ (from the python-evtx package)\n"
                        "in order to parse Windows Event Logs.  If you cannot install this, then\n"
                        "use virt-copy-out(1) to copy the contents of /Windows/System32/winevt/Logs\n"
                        "from this guest, and examine in a binary file viewer.\n"),

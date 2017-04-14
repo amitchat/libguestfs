@@ -16,18 +16,13 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-export LANG=C
 set -e
 
-abs_builddir=$(pwd)
+$TEST_FUNCTIONS
+skip_if_skipped
 
 export XDG_CONFIG_HOME=
 export XDG_CONFIG_DIRS="$abs_builddir/test-config"
-
-if [ -n "$SKIP_TEST_VIRT_BUILDER_SH" ]; then
-    echo "$0: skipping test because environment variable is set."
-    exit 77
-fi
 
 if [ ! -f fedora.xz ]; then
     echo "$0: test skipped because there is no fedora.xz in the build directory"
@@ -55,7 +50,10 @@ rm -f $output
 # Note we cannot test --install, --run since the phony Fedora doesn't
 # have a real OS inside just some configuration files.  Just about
 # every other option is fair game.
-$VG virt-builder phony-fedora \
+#
+# Don't use $VG here, because libtool (expanded from $VG) chokes
+# on the multi-line parameters. (RHBZ#1420301)
+virt-builder phony-fedora \
     -v --no-cache --no-check-signature $no_network \
     -o $output --size 2G --format $format \
     --arch x86_64 \

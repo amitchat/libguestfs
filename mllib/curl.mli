@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@ type proxy =
   | SystemProxy           (** Use the system settings. *)
   | ForcedProxy of string (** The proxy is forced to the specified URL. *)
 
-val create : ?curl:string -> ?proxy:proxy -> args -> t
+val create : ?curl:string -> ?proxy:proxy -> ?tmpdir:string -> args -> t
 (** Create a curl command handle.
 
     The curl arguments are a list of key, value pairs corresponding

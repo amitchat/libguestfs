@@ -28,7 +28,7 @@ Using virt-p2v-make-kiwi is very simple:
 
  virt-p2v-make-kiwi
 
-will build a kiwi configuration based on the current machine's distribution.
+will build a kiwi configuration based on the current machine’s distribution.
 
 To control the name of the output folder, use the I<-o> parameter.
 
@@ -133,7 +133,7 @@ Display version number and exit.
 
 =over 4
 
-=item F<$libexecdir/virt-p2v>
+=item F<$libdir/virt-p2v/virt-p2v.xz>
 
 The L<virt-p2v(1)> binary which is copied into the kiwi configuration.
 

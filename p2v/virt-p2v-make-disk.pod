@@ -106,7 +106,7 @@ hypervisors.
 
 This option requires that you have built F<virt-p2v.$arch> (ie.
 usually F<virt-p2v.i686>) by some means, and that you install it next
-to the ordinary F<virt-p2v> binary (eg. in libexecdir or
+to the ordinary F<virt-p2v> binary (eg. in F<$libdir/virt-p2v/> or
 C<$VIRT_V2V_DATA_DIR>).  This is outside the scope of this manual
 page, but you can find some tips in
 L<guestfs-building(1)/BUILDING i686 32 BIT VIRT-P2V>.
@@ -138,7 +138,7 @@ See L</ADDING EXTRA PACKAGES> above.
 
 =item B<--no-warn-if-partition>
 
-Normally you should not write to a partition on a USB drive (ie. don't
+Normally you should not write to a partition on a USB drive (ie. don’t
 use S<C<-o /dev/sdX1>>, use S<C<-o /dev/sdX>> to make a bootable USB
 drive).  If you do this, virt-builder prints a warning.  This option
 suppresses that warning.
@@ -169,7 +169,7 @@ Display version number and exit.
 
 =over 4
 
-=item F<$libexecdir/virt-p2v>
+=item F<$libdir/virt-p2v/virt-p2v.xz>
 
 The L<virt-p2v(1)> binary which is copied into the bootable disk
 image.
@@ -215,4 +215,4 @@ Richard W.M. Jones L<http://people.redhat.com/~rjones/>
 
 =head1 COPYRIGHT
 
-Copyright (C) 2009-2016 Red Hat Inc.
+Copyright (C) 2009-2017 Red Hat Inc.

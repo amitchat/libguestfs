@@ -1,5 +1,5 @@
 (* virt-v2v
- * Copyright (C) 2009-2016 Red Hat Inc.
+ * Copyright (C) 2009-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -66,6 +66,9 @@ let parse_cmdline () =
   let vdsm_vm_uuid = ref None in
   let vdsm_ovf_output = ref None in (* default "." *)
 
+  let vdsm_compat = ref "0.10" in
+  let set_vdsm_compat s = vdsm_compat := s in
+
   let set_string_option_once optname optref arg =
     match !optref with
     | Some _ ->
@@ -83,6 +86,7 @@ let parse_cmdline () =
     | "libvirt" -> input_mode := `Libvirt
     | "libvirtxml" -> input_mode := `LibvirtXML
     | "ova" -> input_mode := `OVA
+    | "vmx" -> input_mode := `VMX
     | s ->
       error (f_"unknown -i option: %s") s
   in
@@ -101,7 +105,7 @@ let parse_cmdline () =
       | in_, out ->
          let key = t, Some in_ in
          if NetworkMap.mem key !network_map then
-           error (f_"duplicate %s parameter.  Duplicate mappings specified for %s '%s'.") flag name in_;
+           error (f_"duplicate %s parameter.  Duplicate mappings specified for %s ‘%s’.") flag name in_;
          network_map := NetworkMap.add key out !network_map
     in
     let add_network str = add "-n/--network" (s_"network") Network str
@@ -122,7 +126,7 @@ let parse_cmdline () =
     | "libvirt" -> output_mode := `Libvirt
     | "disk" | "local" -> output_mode := `Local
     | "null" -> output_mode := `Null
-    | "ovirt" | "rhev" -> output_mode := `RHEV
+    | "ovirt" | "rhv" | "rhev" -> output_mode := `RHV
     | "qemu" -> output_mode := `QEmu
     | "vdsm" -> output_mode := `VDSM
     | s ->
@@ -166,8 +170,8 @@ let parse_cmdline () =
     String.concat "|" (Modules_list.output_modules ()) in
 
   let argspec = [
-    [ S 'b'; L"bridge" ],        Getopt.String ("in:out", add_bridge),     s_"Map bridge 'in' to 'out'";
-    [ L"compressed" ], Getopt.Set compressed,     s_"Compress output file";
+    [ S 'b'; L"bridge" ],        Getopt.String ("in:out", add_bridge),     s_"Map bridge ‘in’ to ‘out’";
+    [ L"compressed" ], Getopt.Set compressed,     s_"Compress output file (-of qcow2 only)";
     [ L"dcpath"; L"dcPath" ],  Getopt.String ("path", set_string_option_once "--dcpath" dcpath),
                                             s_"Override dcPath (for vCenter)";
     [ L"debug-overlay"; L"debug-overlays" ], Getopt.Set debug_overlays, s_"Save overlay files";
@@ -178,7 +182,7 @@ let parse_cmdline () =
                                             s_"Input format (for -i disk)";
     [ L"in-place" ], Getopt.Set in_place,         s_"Only tune the guest in the input VM";
     [ L"machine-readable" ], Getopt.Set machine_readable, s_"Make output machine readable";
-    [ S 'n'; L"network" ],        Getopt.String ("in:out", add_network),    s_"Map network 'in' to 'out'";
+    [ S 'n'; L"network" ],        Getopt.String ("in:out", add_network),    s_"Map network ‘in’ to ‘out’";
     [ L"no-copy" ], Getopt.Clear do_copy,         s_"Just write the metadata";
     [ L"no-trim" ], Getopt.String ("-", no_trim_warning),
                                             s_"Ignored for backwards compatibility";
@@ -198,6 +202,7 @@ let parse_cmdline () =
     [ L"print-source" ], Getopt.Set print_source, s_"Print source and stop";
     [ L"qemu-boot" ], Getopt.Set qemu_boot,       s_"Boot in qemu (-o qemu only)";
     [ L"root" ],    Getopt.String ("ask|... ", set_root_choice), s_"How to choose root filesystem";
+    [ L"vdsm-compat" ], Getopt.Symbol ("0.10|1.1", ["0.10"; "1.1"], set_vdsm_compat), s_"Write qcow2 with compat=0.10|1.1";
     [ L"vdsm-image-uuid" ], Getopt.String ("uuid", add_vdsm_image_uuid), s_"Output image UUID(s)";
     [ L"vdsm-vol-uuid" ], Getopt.String ("uuid", add_vdsm_vol_uuid), s_"Output vol UUID(s)";
     [ L"vdsm-vm-uuid" ], Getopt.String ("uuid", set_string_option_once "--vdsm-vm-uuid" vdsm_vm_uuid),
@@ -216,7 +221,7 @@ let parse_cmdline () =
  virt-v2v -ic vpx://vcenter.example.com/Datacenter/esxi -os imported esx_guest
 
  virt-v2v -ic vpx://vcenter.example.com/Datacenter/esxi esx_guest \
-   -o rhev -os rhev.nfs:/export_domain --network rhevm
+   -o rhv -os rhv.nfs:/export_domain --network ovirtmgmt
 
  virt-v2v -i libvirtxml guest-domain.xml -o local -os /var/tmp
 
@@ -259,6 +264,7 @@ read the man page virt-v2v(1).
   let print_source = !print_source in
   let qemu_boot = !qemu_boot in
   let root_choice = !root_choice in
+  let vdsm_compat = !vdsm_compat in
   let vdsm_image_uuids = List.rev !vdsm_image_uuids in
   let vdsm_vol_uuids = List.rev !vdsm_vol_uuids in
   let vdsm_vm_uuid = !vdsm_vm_uuid in
@@ -272,6 +278,7 @@ read the man page virt-v2v(1).
     printf "virt-v2v\n";
     printf "libguestfs-rewrite\n";
     printf "colours-option\n";
+    printf "vdsm-compat-option\n";
     List.iter (printf "input:%s\n") (Modules_list.input_modules ());
     List.iter (printf "output:%s\n") (Modules_list.output_modules ());
     List.iter (printf "convert:%s\n") (Modules_list.convert_modules ());
@@ -326,33 +333,49 @@ read the man page virt-v2v(1).
         | [filename] -> filename
         | _ ->
           error (f_"expecting an OVA file name on the command line") in
-      Input_ova.input_ova filename in
+      Input_ova.input_ova filename
+
+    | `VMX ->
+      (* -i vmx: Expecting an vmx filename. *)
+      let filename =
+        match args with
+        | [filename] -> filename
+        | _ ->
+          error (f_"expecting a VMX file name on the command line") in
+      Input_vmx.input_vmx filename in
+
+  (* Common error message. *)
+  let error_option_cannot_be_used_in_output_mode mode opt =
+    error (f_"-o %s: %s option cannot be used in this output mode") mode opt
+  in
 
   (* Parse the output mode. *)
   if output_mode <> `Not_set && in_place then
     error (f_"-o and --in-place cannot be used at the same time");
-  let output =
+  let output, output_format, output_alloc =
     match output_mode with
     | `Glance ->
       if output_conn <> None then
-        error (f_"-o glance: -oc option cannot be used in this output mode");
+        error_option_cannot_be_used_in_output_mode "glance" "-oc";
       if output_storage <> None then
-        error (f_"-o glance: -os option cannot be used in this output mode");
+        error_option_cannot_be_used_in_output_mode "glance" "-os";
       if qemu_boot then
-        error (f_"-o glance: --qemu-boot option cannot be used in this output mode");
+        error_option_cannot_be_used_in_output_mode "glance" "--qemu-boot";
       if not do_copy then
-        error (f_"--no-copy and '-o glance' cannot be used at the same time");
-      Output_glance.output_glance ()
+        error_option_cannot_be_used_in_output_mode "glance" "--no-copy";
+      Output_glance.output_glance (),
+      output_format, output_alloc
 
     | `Not_set
     | `Libvirt ->
       let output_storage =
         match output_storage with None -> "default" | Some os -> os in
       if qemu_boot then
-        error (f_"-o libvirt: --qemu-boot option cannot be used in this output mode");
+        error_option_cannot_be_used_in_output_mode "libvirt" "--qemu-boot";
       if not do_copy then
-        error (f_"--no-copy and '-o libvirt' cannot be used at the same time");
-      Output_libvirt.output_libvirt output_conn output_storage
+        error_option_cannot_be_used_in_output_mode "libvirt" "--no-copy";
+      Output_libvirt.output_libvirt output_conn output_storage,
+      output_format, output_alloc
 
     | `Local ->
       let os =
@@ -363,17 +386,24 @@ read the man page virt-v2v(1).
            error (f_"-os %s: output directory does not exist or is not a directory") d
         | Some d -> d in
       if qemu_boot then
-        error (f_"-o local: --qemu-boot option cannot be used in this output mode");
-      Output_local.output_local os
+        error_option_cannot_be_used_in_output_mode "local" "--qemu-boot";
+      Output_local.output_local os,
+      output_format, output_alloc
 
     | `Null ->
+      if output_alloc <> Sparse then
+        error_option_cannot_be_used_in_output_mode "null" "-oa";
       if output_conn <> None then
-        error (f_"-o null: -oc option cannot be used in this output mode");
+        error_option_cannot_be_used_in_output_mode "null" "-oc";
+      if output_format <> None then
+        error_option_cannot_be_used_in_output_mode "null" "-of";
       if output_storage <> None then
-        error (f_"-o null: -os option cannot be used in this output mode");
+        error_option_cannot_be_used_in_output_mode "null" "-os";
       if qemu_boot then
-        error (f_"-o null: --qemu-boot option cannot be used in this output mode");
-      Output_null.output_null ()
+        error_option_cannot_be_used_in_output_mode "null" "--qemu-boot";
+      Output_null.output_null (),
+      (* Force output format to raw sparse in -o null mode. *)
+      Some "raw", Sparse
 
     | `QEmu ->
       let os =
@@ -383,26 +413,28 @@ read the man page virt-v2v(1).
         | Some d when not (is_directory d) ->
            error (f_"-os %s: output directory does not exist or is not a directory") d
         | Some d -> d in
-      Output_qemu.output_qemu os qemu_boot
+      Output_qemu.output_qemu os qemu_boot,
+      output_format, output_alloc
 
-    | `RHEV ->
+    | `RHV ->
       let os =
         match output_storage with
         | None ->
-           error (f_"-o rhev: output storage was not specified, use '-os'");
+           error (f_"-o rhv: output storage was not specified, use ‘-os’");
         | Some d -> d in
       if qemu_boot then
-        error (f_"-o rhev: --qemu-boot option cannot be used in this output mode");
-      Output_rhev.output_rhev os output_alloc
+        error_option_cannot_be_used_in_output_mode "rhv" "--qemu-boot";
+      Output_rhv.output_rhv os output_alloc,
+      output_format, output_alloc
 
     | `VDSM ->
       let os =
         match output_storage with
         | None ->
-           error (f_"-o vdsm: output storage was not specified, use '-os'");
+           error (f_"-o vdsm: output storage was not specified, use ‘-os’");
         | Some d -> d in
       if qemu_boot then
-        error (f_"-o vdsm: --qemu-boot option cannot be used in this output mode");
+        error_option_cannot_be_used_in_output_mode "vdsm" "--qemu-boot";
       let vdsm_vm_uuid =
         match vdsm_vm_uuid with
         | None ->
@@ -415,8 +447,10 @@ read the man page virt-v2v(1).
         vol_uuids = vdsm_vol_uuids;
         vm_uuid = vdsm_vm_uuid;
         ovf_output = vdsm_ovf_output;
+        compat = vdsm_compat;
       } in
-      Output_vdsm.output_vdsm os vdsm_params output_alloc in
+      Output_vdsm.output_vdsm os vdsm_params output_alloc,
+      output_format, output_alloc in
 
   {
     compressed = compressed; debug_overlays = debug_overlays;

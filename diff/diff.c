@@ -32,7 +32,14 @@
 #include <time.h>
 #include <libintl.h>
 #include <sys/wait.h>
+
+#if MAJOR_IN_MKDEV
+#include <sys/mkdev.h>
+#elif MAJOR_IN_SYSMACROS
 #include <sys/sysmacros.h>
+#else
+#include <sys/types.h>
+#endif
 
 #include "c-ctype.h"
 #include "human.h"
@@ -60,6 +67,8 @@ int keys_from_stdin = 0;
 int echo_keys = 0;
 const char *libvirt_uri = NULL;
 int inspector = 1;
+int in_guestfish = 0;
+int in_virt_rescue = 0;
 
 static int atime = 0;
 static int csv = 0;
@@ -93,11 +102,11 @@ static void __attribute__((noreturn))
 usage (int status)
 {
   if (status != EXIT_SUCCESS)
-    fprintf (stderr, _("Try `%s --help' for more information.\n"),
+    fprintf (stderr, _("Try ‘%s --help’ for more information.\n"),
              getprogname ());
   else {
     printf (_("%s: list differences between virtual machines\n"
-              "Copyright (C) 2010-2016 Red Hat Inc.\n"
+              "Copyright (C) 2010-2017 Red Hat Inc.\n"
               "Usage:\n"
               "  %s [--options] -d domain1 -D domain2\n"
               "  %s [--options] -a disk1.img -A disk2.img [-a|-A ...]\n"
@@ -333,7 +342,7 @@ main (int argc, char *argv[])
     error (EXIT_FAILURE, 0, _("you cannot use -h and --csv options together."));
 
   if (optind != argc) {
-    fprintf (stderr, _("%s: error: extra argument '%s' on command line.\n"
+    fprintf (stderr, _("%s: error: extra argument ‘%s’ on command line.\n"
              "Make sure to specify the argument for --checksum or --format "
              "like '--format=%s'.\n"),
              getprogname (), argv[optind], argv[optind]);

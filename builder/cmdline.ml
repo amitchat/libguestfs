@@ -1,5 +1,5 @@
 (* virt-builder
- * Copyright (C) 2013-2016 Red Hat Inc.
+ * Copyright (C) 2013-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -87,7 +87,13 @@ let parse_cmdline () =
   let add_fingerprint arg = push_front arg fingerprints in
 
   let format = ref "" in
-  let gpg = ref "gpg" in
+  let gpg =
+    try which "gpg2"
+    with Executable_not_found _ ->
+         try which "gpg"
+         with Executable_not_found _ ->
+              "" in
+  let gpg = ref gpg in
 
   let list_format = ref List_entries.Short in
   let list_set_long () = list_format := List_entries.Long in
@@ -137,7 +143,7 @@ let parse_cmdline () =
     [ L"delete-cache" ], Getopt.Unit delete_cache_mode,
                                             s_"Delete the template cache";
     [ L"no-delete-on-failure" ], Getopt.Clear delete_on_failure,
-                                            s_"Don't delete output file on failure";
+                                            s_"Don’t delete output file on failure";
     [ L"fingerprint" ], Getopt.String ("AAAA..", add_fingerprint),
                                              s_"Fingerprint of valid signing key";
     [ L"format" ],  Getopt.Set_string ("raw|qcow2", format),      s_"Output format (default: raw)";
@@ -231,26 +237,26 @@ read the man page virt-builder(1).
       (match args with
       | [arg] -> arg
       | [] ->
-        error (f_"virt-builder os-version\nMissing 'os-version'. Use '--list' to list available template names.")
+        error (f_"virt-builder os-version\nMissing ‘os-version’. Use ‘--list’ to list available template names.")
       | _ ->
-        error (f_"too many parameters, expecting 'os-version'")
+        error (f_"too many parameters, expecting ‘os-version’")
       )
     | `List ->
       if format <> None then
-        error (f_"--list: use '--list-format', not '--format'");
+        error (f_"--list: use ‘--list-format’, not ‘--format’");
       (match args with
       | [arg] -> arg
       | [] -> ""
       | _ ->
-        error (f_"too many parameters, at most one 'os-version' is allowed for --list")
+        error (f_"too many parameters, at most one ‘os-version’ is allowed for --list")
       )
     | `Notes ->
       (match args with
       | [arg] -> arg
       | [] ->
-        error (f_"virt-builder --notes os-version\nMissing 'os-version'. Use '--list' to list available template names.")
+        error (f_"virt-builder --notes os-version\nMissing ‘os-version’. Use ‘--list’ to list available template names.")
       | _ ->
-        error (f_"--notes: too many parameters, expecting 'os-version'");
+        error (f_"--notes: too many parameters, expecting ‘os-version’");
       )
     | `Cache_all
     | `Print_cache
@@ -264,7 +270,7 @@ read the man page virt-builder(1).
       (match args with
       | [arg] -> arg
       | [] ->
-        error (f_"virt-builder --get-kernel image\nMissing 'image' (disk image file) argument")
+        error (f_"virt-builder --get-kernel image\nMissing ‘image’ (disk image file) argument")
       | _ ->
         error (f_"--get-kernel: too many parameters")
       ) in

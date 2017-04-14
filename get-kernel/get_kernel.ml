@@ -1,5 +1,5 @@
 (* virt-get-kernel
- * Copyright (C) 2013-2016 Red Hat Inc.
+ * Copyright (C) 2013-2017 Red Hat Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -124,7 +124,7 @@ let rec do_fetch ~transform_fn ~outputdir g root =
     match typ with
     | "linux" -> pick_kernel_files_linux g root
     | typ ->
-      error (f_"operating system '%s' not supported") typ in
+      error (f_"operating system ‘%s’ not supported") typ in
 
   (* Download the files. *)
   List.iter (

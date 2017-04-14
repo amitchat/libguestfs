@@ -87,8 +87,17 @@ below.
 
 =item glibc
 
-I<Required>.  We use various glibc-isms, and glibc also provides XDR
-libraries and the C<rpcgen> tool.
+I<Required>.  We use the custom printf formatters extension of
+glibc (see L<guestfs-hacking(1)/DAEMON CUSTOM PRINTF FORMATTERS>).
+
+=item XDR (tirpc, glibc or other)
+
+I<Required>.  We use the XDR implementation from
+C<E<lt>rpc/xdr.hE<gt>>, which may come from glibc, tirpc or another
+library.
+
+The C<rpcgen> tool is optional, except if you want to compile from git
+and/or patch libguestfs with new APIs.
 
 =item Gcc or Clang
 
@@ -117,6 +126,8 @@ Optional (but recommended) if compiling from tarball.
 =item autoconf
 
 =item automake
+
+=item gettext
 
 I<Required> if compiling from git.
 Optional if compiling from tarball.
@@ -175,7 +186,7 @@ Various core features will be disabled if hivex is not available.
 
 =item libmagic
 
-Optional.  This is the library used by the L<file(1)> command.
+I<Required>.  This is the library used by the L<file(1)> command.
 
 =item libvirt E<ge> 0.10.2
 
@@ -187,7 +198,7 @@ Optional.  Used only for tests.
 
 =item libconfig
 
-Optional.  Used to parse libguestfs's own config files,
+Optional.  Used to parse libguestfs’s own config files,
 eg. F</etc/libguestfs-tools.conf>.
 
 =item libselinux
@@ -253,7 +264,13 @@ Optional.  Used only for testing.
 
 =item qemu-nbd
 
-Optional.  Used for testing, and by virt-p2v.
+=item nbdkit
+
+Optional.  qemu-nbd is used for testing.
+
+L<virt-p2v(1)> requires either qemu-nbd or nbdkit, but these only need
+to be present on the virt-p2v ISO, they do not need to be installed at
+compile time.
 
 =item uml_mkcow
 
@@ -263,7 +280,7 @@ Optional.  For the L<UML backend|guestfs(3)/BACKEND>.
 
 Optional.  Used by virt-builder for downloads.
 
-=item gpg
+=item GNU Privacy Guard (GnuPG, gpg) v1 or v2
 
 Optional.  Used by virt-builder for checking digital signatures.
 
@@ -281,6 +298,17 @@ Used by the virt-p2v graphical user interface.
 Either Gtk 2 or Gtk 3 can be used.  If you want to select a specific
 version of Gtk, use S<C<./configure --with-gtk=2>> or
 S<C<./configure --with-gtk=3>>.
+
+=item D-Bus
+
+Optional.
+
+If the D-Bus low level C API is available, virt-p2v can send a D-Bus
+message to logind to inhibit power saving (sleep, suspend, etc) during
+P2V conversions.
+
+If this API is not available at build time, then very long conversions
+might be interrupted if the physical machine goes to sleep.
 
 =item zip
 
@@ -403,6 +431,10 @@ Optional.  Library for filesystem forensics analysis.
 
 =head1 BUILDING FROM GIT
 
+You will need to install additional dependencies C<autoconf>,
+C<automake>, C<gettext>, OCaml findlib and po4a when building from
+git.
+
  git clone https://github.com/libguestfs/libguestfs
  cd libguestfs
  ./autogen.sh
@@ -516,7 +548,7 @@ environment variables needed, eg. for skipping tests:
  # Skip this test, it is broken.
  export SKIP_TEST_BTRFS_FSCK=1
 
-Note that F<localenv> is included by the top Makefile (so it's a
+Note that F<localenv> is included by the top Makefile (so it’s a
 Makefile fragment).  But if it is also sourced by your
 F<localconfigure> script then it is used as a shell script.
 
@@ -572,7 +604,7 @@ it, since errors in the GNUlib test suite are often not important.
 
 =item B<--disable-static>
 
-Don't build a static linked version of the libguestfs library.
+Don’t build a static linked version of the libguestfs library.
 
 =item B<--enable-install-daemon>
 
@@ -798,17 +830,17 @@ On Fedora you can use the L<mock(1)> tool.  For example:
 This will result in a F<virt-v2v-*.i686.rpm> file which can be
 unpacked to extract the 32 bit virt-p2v binary.
 
-The binary may be copied to either F<p2v/virt-p2v.i686>, or
-F<$libexecdir/virt-p2v.i686> or F<$VIRT_P2V_DATA_DIR/virt-p2v.i686> as
-appropriate.  This enables the L<virt-p2v-make-disk(1)> I<--arch>
-option.
+The binary may be compressed to either F<p2v/virt-p2v.i686.xz>, or
+F<$libdir/virt-p2v/virt-p2v.i686.xz> or
+F<$VIRT_P2V_DATA_DIR/virt-p2v.i686.xz> as appropriate.  This enables
+the L<virt-p2v-make-disk(1)> I<--arch> option.
 
 =head1 SEE ALSO
 
 L<guestfs(3)>,
 L<guestfs-examples(3)>,
-L<guestfs-hacking(3)>,
-L<guestfs-internals(3)>,
+L<guestfs-hacking(1)>,
+L<guestfs-internals(1)>,
 L<guestfs-performance(1)>,
 L<guestfs-release-notes(1)>,
 L<guestfs-testing(1)>,
@@ -822,4 +854,4 @@ Richard W.M. Jones (C<rjones at redhat dot com>)
 
 =head1 COPYRIGHT
 
-Copyright (C) 2009-2016 Red Hat Inc.
+Copyright (C) 2009-2017 Red Hat Inc.
